@@ -1,0 +1,69 @@
+{
+  "$schema": "https://raw.githubusercontent.com/code-yeongyu/oh-my-openagent/dev/assets/oh-my-opencode.schema.json",
+  "team_mode": {
+    "enabled": true,
+    "max_concurrent_agents": 5,
+    "coordination_strategy": "round_robin"
+  },
+  "agents": {
+    "sisyphus": {
+      "model": "openrouter/moonshotai/kimi-k2.6"
+    },
+    "hephaestus": {
+      "model": "openrouter/deepseek/deepseek-v4-pro"
+    },
+    "prometheus": {
+      "model": "zai-coding-plan/glm-5.1"
+    },
+    "atlas": {
+      "model": "openrouter/moonshotai/kimi-k2.6"
+    },
+    "oracle": {
+      "model": "zai-coding-plan/glm-5.1"
+    },
+    "momus": {
+      "model": "openrouter/deepseek/deepseek-v4-pro"
+    },
+    "metis": {
+      "model": "openrouter/moonshotai/kimi-k2.6"
+    },
+    "librarian": {
+      "model": "zai-coding-plan/glm-4.5-air"
+    },
+    "explore": {
+      "model": "zai-coding-plan/glm-4.5-air"
+    },
+    "sisyphus-junior": {
+      "model": "openrouter/moonshotai/kimi-k2.6"
+    },
+    "multimodal-looker": {
+      "model": "zai-coding-plan/glm-5v-turbo"
+    }
+  },
+  "categories": {
+    "visual-engineering": {
+      "model": "zai-coding-plan/glm-5.1"
+    },
+    "ultrabrain": {
+      "model": "openrouter/deepseek/deepseek-v4-pro"
+    },
+    "deep": {
+      "model": "openrouter/deepseek/deepseek-v4-pro"
+    },
+    "artistry": {
+      "model": "openrouter/deepseek/deepseek-v4-pro"
+    },
+    "quick": {
+      "model": "zai-coding-plan/glm-4.5-air"
+    },
+    "unspecified-low": {
+      "model": "openrouter/moonshotai/kimi-k2.6"
+    },
+    "unspecified-high": {
+      "model": "openrouter/moonshotai/kimi-k2.6"
+    },
+    "writing": {
+      "model": "openrouter/moonshotai/kimi-k2.6"
+    }
+  }
+}
