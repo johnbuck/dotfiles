@@ -1,0 +1,11 @@
+{
+  "_comment": "Template only. Copy to ~/.claude/.mcp.json and fill in real values. NEVER commit the filled-in file (.gitignore blocks .mcp.json).",
+  "mcpServers": {
+    "example-http-server": {
+      "url": "http://HOST:PORT/mcp",
+      "headers": {
+        "Authorization": "Bearer <YOUR_TOKEN_HERE>"
+      }
+    }
+  }
+}

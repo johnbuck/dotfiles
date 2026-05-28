@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Secret-leak guard for the claude-config public repo.
+# Blocks a commit if a staged file matches a dangerous filename or
+# contains a secret-shaped string. Prefers gitleaks if installed;
+# otherwise falls back to a self-contained grep scan.
+set -euo pipefail
+
+red() { printf '\033[31m%s\033[0m\n' "$1"; }
+grn() { printf '\033[32m%s\033[0m\n' "$1"; }
+
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$staged" ] && exit 0
+
+fail=0
+
+# 1) Forbidden filenames (belt-and-suspenders alongside .gitignore)
+while IFS= read -r f; do
+  case "$f" in
+    .mcp.json|*/.mcp.json|.credentials.json|*/.credentials.json|.claude.json|*.jsonl|.env|.env.*|*.pem|*.key)
+      red "BLOCKED: '$f' must never be committed."; fail=1 ;;
+  esac
+done <<< "$staged"
+
+# 2) Prefer gitleaks if available
+if command -v gitleaks >/dev/null 2>&1; then
+  if ! gitleaks protect --staged --redact --no-banner; then
+    red "BLOCKED: gitleaks found a secret in staged changes."; fail=1
+  fi
+else
+  # 3) Fallback: grep staged content for secret-shaped strings.
+  patterns='(sk-[A-Za-z0-9]{20,})|(ghp_[A-Za-z0-9]{20,})|(gho_[A-Za-z0-9]{20,})|(github_pat_[A-Za-z0-9_]{20,})|(xox[baprs]-[A-Za-z0-9-]{10,})|(AKIA[0-9A-Z]{16})|(-----BEGIN [A-Z ]*PRIVATE KEY-----)|([Bb]earer\s+[A-Za-z0-9._-]{20,})|(eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})'
+  while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    # Skip the example/template and this hook itself (they contain placeholder words).
+    case "$f" in *.example|hooks/pre-commit) continue ;; esac
+    if git show ":$f" 2>/dev/null | grep -nEi "$patterns" >/dev/null 2>&1; then
+      red "BLOCKED: secret-shaped string in '$f'."
+      git show ":$f" | grep -nEi "$patterns" | sed 's/\(.\{60\}\).*/\1.../' | head -5
+      fail=1
+    fi
+  done <<< "$staged"
+fi
+
+if [ "$fail" -ne 0 ]; then
+  red "Commit aborted. Remove the secret, then re-stage and commit."
+  exit 1
+fi
+grn "Secret scan passed."
+exit 0

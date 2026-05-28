@@ -1,0 +1,18 @@
+{
+  "claude-plugins-official": {
+    "source": {
+      "source": "github",
+      "repo": "anthropics/claude-plugins-official"
+    },
+    "installLocation": "__HOME__/.claude/plugins/marketplaces/claude-plugins-official",
+    "lastUpdated": "2026-05-28T17:59:41.963Z"
+  },
+  "local-do-the-thing": {
+    "source": {
+      "source": "directory",
+      "path": "__HOME__/.claude/plugins/local/project-planning"
+    },
+    "installLocation": "__HOME__/.claude/plugins/local/project-planning",
+    "lastUpdated": "2026-04-12T07:11:29.093Z"
+  }
+}
