@@ -67,10 +67,11 @@ for m in installed_plugins.json known_marketplaces.json; do
 done
 say "plugin manifests written"
 
-# Wire the secret-scan hook for commits made in THIS repo.
-if [ -d "$REPO/.git" ]; then
-  git -C "$REPO" config core.hooksPath hooks
-  chmod +x "$REPO/hooks/pre-commit"
+# Wire the secret-scan hook for commits made in THIS repo (hooks live at repo root).
+TOPLEVEL="$(git -C "$REPO" rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -n "$TOPLEVEL" ] && [ -f "$TOPLEVEL/hooks/pre-commit" ]; then
+  git -C "$TOPLEVEL" config core.hooksPath hooks
+  chmod +x "$TOPLEVEL/hooks/pre-commit"
   say "pre-commit secret-scan hook enabled for this repo"
 fi
 
