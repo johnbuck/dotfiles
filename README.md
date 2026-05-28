@@ -1,52 +1,34 @@
-# claude-config
+# tooling
 
-Portable [Claude Code](https://claude.com/claude-code) configuration — the parts of my
-`~/.claude/` worth carrying between machines (e.g. onto a work box). **Contains no
-secrets, credentials, conversation history, or personal data.**
+Personal development tooling and machine setup — portable across machines (e.g. onto a work box).
+**Contains no secrets, credentials, or personal data** (enforced by `.gitignore` + a pre-commit
+secret scan).
 
-## What's here
+## Layout
 
-| Path | What it is |
-|------|------------|
-| `settings.json` | Permissions (allow/deny/ask), statusline, enabled plugins, effort prefs. Paths use a `__HOME__` token that `install.sh` resolves. |
-| `scripts/` | Statusline scripts (`context-status.sh`, `context-warn.sh`) referenced by `settings.json`. |
-| `agents/` | Subagent definitions (skill / slash-command / subagent auditors). |
-| `plugins/local/project-planning/` | Local `do-the-thing` plugin (`do-specs` + `do-scaffold` skills). Eval/benchmark artifacts were stripped — only the working plugin ships. |
-| `plugins/*.json` | Manifest of which marketplaces/plugins to install (reference + used by installer). |
-| `.mcp.json.example` | Template for MCP servers. Copy to `~/.claude/.mcp.json` and fill in your own tokens. |
-| `install.sh` | Deploys the above into `~/.claude/`, backing up anything it overwrites. |
-| `hooks/pre-commit` | Secret-leak guard (gitleaks if present, else grep fallback) that blocks committing tokens. |
-
-## What is deliberately NOT here
-
-Never committed — these stay on each machine and are blocked by `.gitignore` + the pre-commit hook:
-
-- `.credentials.json`, `.claude.json` (OAuth account, user ID)
-- `.mcp.json` (live MCP bearer tokens)
-- `history.jsonl`, `transcripts/`, `projects/` (incl. memory), `sessions/`, `tasks/`, caches
-
-## Install on a new machine
-
-```bash
-git clone <this-repo-url> ~/claude-config
-cd ~/claude-config
-./install.sh
+```
+tooling/
+├── hooks/pre-commit     # secret-leak guard (active for commits in this repo)
+└── dotfiles/
+    ├── claude/          # Claude Code config — see dotfiles/claude/README.md
+    ├── opencode/        # (placeholder)
+    └── ghostty/         # (placeholder)
 ```
 
-Then, by hand (these involve secrets/accounts and are never automated):
+Each tool under `dotfiles/` is self-contained with its own README and (where relevant) installer.
 
-1. `claude` → authenticate (creates your own `.credentials.json`).
-2. If you use MCP servers: `cp .mcp.json.example ~/.claude/.mcp.json` and fill in tokens.
-3. Restart Claude Code to pick up settings + plugins.
+## Setup
 
-## Permission posture
+```bash
+git clone https://github.com/johnbuck/tooling ~/tooling
+cd ~/tooling
+git config core.hooksPath hooks     # enable the secret-scan hook
+```
 
-`settings.json` ships a **conservative** default: `defaultMode: default` (Claude asks before
-acting) with broad read-only/dev commands pre-allowed and destructive ones denied or gated to
-`ask`. Loosen it per-machine if you want — don't loosen it in this public repo.
+Then install whichever tool config you want, e.g. `dotfiles/claude/install.sh`.
 
 ## Safety
 
-This repo is an **allowlist**: only hand-vetted files are tracked. The `.gitignore` and the
-`hooks/pre-commit` scan are backstops. `install.sh` runs `git config core.hooksPath hooks`, so
-the secret scan is active for any commit you make here.
+This repo is an **allowlist** — only hand-vetted files are tracked. The `.gitignore` and
+`hooks/pre-commit` (gitleaks if installed, else a grep fallback) are backstops that block any
+commit containing a token or a known-sensitive filename.
