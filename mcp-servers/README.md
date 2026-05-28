@@ -20,12 +20,7 @@ These are upstream npm packages, each run as a stdio server and exposed over HTT
 |--------|-------------|------|
 | memory | [`@modelcontextprotocol/server-memory`](https://www.npmjs.com/package/@modelcontextprotocol/server-memory) | 8404 |
 | sequential-thinking | [`@modelcontextprotocol/server-sequential-thinking`](https://www.npmjs.com/package/@modelcontextprotocol/server-sequential-thinking) | 8406 |
-| n8n-mcp | [`n8n-mcp`](https://www.npmjs.com/package/n8n-mcp) | 8402 |
-| uptime-kuma | [`@davidfuchs/mcp-uptime-kuma`](https://www.npmjs.com/package/@davidfuchs/mcp-uptime-kuma) | 8403 |
 | remotion | [`@remotion/mcp`](https://www.npmjs.com/package/@remotion/mcp) | 8405 |
-
-> n8n-mcp and uptime-kuma point at your own n8n / Uptime Kuma instances, so they're only useful on
-> a network where those exist.
 
 ## Running the stack
 
@@ -35,7 +30,6 @@ time**, so Docker pulls the upstream package from npm for you.
 
 ```bash
 cd mcp-servers
-cp .env.example .env        # fill in n8n + uptime-kuma creds (others need none)
 docker compose up -d --build
 ```
 
