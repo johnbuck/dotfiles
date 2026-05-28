@@ -23,7 +23,7 @@ done <<< "$staged"
 
 # 2) Prefer gitleaks if available
 if command -v gitleaks >/dev/null 2>&1; then
-  if ! gitleaks protect --staged --redact --no-banner; then
+  if ! gitleaks git --staged --redact --no-banner; then
     red "BLOCKED: gitleaks found a secret in staged changes."; fail=1
   fi
 else
