@@ -1,11 +1,51 @@
 {
-  "_comment": "Template only. Copy to ~/.claude/.mcp.json and fill in real values. NEVER commit the filled-in file (.gitignore blocks .mcp.json).",
   "mcpServers": {
-    "example-http-server": {
-      "url": "http://HOST:PORT/mcp",
+    "ynab": {
+      "type": "http",
+      "url": "http://__MCP_HOST__:8400/mcp",
       "headers": {
-        "Authorization": "Bearer <YOUR_TOKEN_HERE>"
+        "Authorization": "Bearer ${YNAB_MCP_BEARER}"
       }
+    },
+    "excalidraw-gen": {
+      "type": "http",
+      "url": "http://__MCP_HOST__:8401/mcp",
+      "headers": {
+        "Authorization": "Bearer ${EXCALIDRAW_GEN_BEARER}"
+      }
+    },
+    "n8n-mcp": {
+      "type": "http",
+      "url": "http://__MCP_HOST__:8402/mcp"
+    },
+    "uptime-kuma": {
+      "type": "http",
+      "url": "http://__MCP_HOST__:8403/mcp"
+    },
+    "memory": {
+      "type": "http",
+      "url": "http://__MCP_HOST__:8404/mcp"
+    },
+    "remotion": {
+      "type": "http",
+      "url": "http://__MCP_HOST__:8405/mcp"
+    },
+    "sequential-thinking": {
+      "type": "http",
+      "url": "http://__MCP_HOST__:8406/mcp"
+    },
+    "todoist": {
+      "type": "http",
+      "url": "https://ai.todoist.net/mcp",
+      "headers": {
+        "Authorization": "Bearer ${TODOIST_API_TOKEN}"
+      }
+    },
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest", "--browser", "chromium"],
+      "env": {}
     }
   }
 }

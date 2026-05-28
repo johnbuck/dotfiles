@@ -13,7 +13,7 @@ secrets, credentials, conversation history, or personal data.**
 | `agents/` | Subagent definitions (skill / slash-command / subagent auditors). |
 | `plugins/local/project-planning/` | Local `do-the-thing` plugin (`do-specs` + `do-scaffold` skills). Eval/benchmark artifacts were stripped — only the working plugin ships. |
 | `plugins/*.json` | Manifest of which marketplaces/plugins to install (reference + used by installer). |
-| `.mcp.json.example` | Template for MCP servers. Copy to `~/.claude/.mcp.json` and fill in your own tokens. |
+| `.mcp.json.example` | Full MCP server set (sanitized). `__MCP_HOST__` placeholder for the LAN host; tokens via `${ENV_VAR}`. Copy to `~/.claude/.mcp.json` and fill in. |
 | `install.sh` | Deploys the above into `~/.claude/`, backing up anything it overwrites. |
 | `hooks/pre-commit` | Secret-leak guard (gitleaks if present, else grep fallback) that blocks committing tokens. |
 
@@ -36,8 +36,15 @@ cd ~/tooling/dotfiles/claude
 Then, by hand (these involve secrets/accounts and are never automated):
 
 1. `claude` → authenticate (creates your own `.credentials.json`).
-2. If you use MCP servers: `cp .mcp.json.example ~/.claude/.mcp.json` and fill in tokens.
+2. MCP servers (optional): `cp .mcp.json.example ~/.claude/.mcp.json`, then:
+   - replace `__MCP_HOST__` with the host running your servers (drop the entries you don't use),
+   - export the token env vars the file references: `YNAB_MCP_BEARER`, `EXCALIDRAW_GEN_BEARER`,
+     `TODOIST_API_TOKEN` (e.g. in your shell profile). The `${VAR}` refs expand at load time, so
+     no secrets live in the file.
 3. Restart Claude Code to pick up settings + plugins.
+
+> Note: your live MCP config actually lives inside `~/.claude.json` (with real tokens) — that file
+> is never committed. This `.mcp.json.example` is the portable, sanitized equivalent.
 
 ## Permission posture
 
