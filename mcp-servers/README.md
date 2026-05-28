@@ -27,10 +27,25 @@ These are upstream npm packages, each run as a stdio server and exposed over HTT
 > n8n-mcp and uptime-kuma point at your own n8n / Uptime Kuma instances, so they're only useful on
 > a network where those exist.
 
-## The wrapper pattern
+## Running the stack
 
-Each off-the-shelf server is a tiny image: install the package + supergateway, then let supergateway
-bridge stdio → streamable HTTP with a health endpoint.
+The build files are in this directory — `docker-compose.yml` plus a `<server>/Dockerfile` per
+service. Nothing is vendored: each image runs `npm install -g <package> supergateway` at **build
+time**, so Docker pulls the upstream package from npm for you.
+
+```bash
+cd mcp-servers
+cp .env.example .env        # fill in n8n + uptime-kuma creds (others need none)
+docker compose up -d --build
+```
+
+Each server then answers on its port over streamable HTTP (e.g. memory on `:8404`). Point your
+MCP client at `http://<host>:<port>/mcp`.
+
+### The wrapper pattern
+
+Each `Dockerfile` is tiny — install the package + supergateway, then let supergateway bridge
+stdio → streamable HTTP with a health endpoint. For example, `memory/Dockerfile`:
 
 ```dockerfile
 FROM node:22-alpine
@@ -41,38 +56,6 @@ CMD ["supergateway", "--stdio", "mcp-server-memory", \
      "--port", "8404", "--outputTransport", "streamableHttp", "--healthEndpoint", "/health"]
 ```
 
-## Compose (sanitized)
-
-Generic, self-contained stack. Tokens come from a local `.env` (never committed); replace ports/hosts
-to taste.
-
-```yaml
-services:
-  memory-mcp:
-    build: ./memory
-    ports: ["8404:8404"]
-    volumes: ["memory-data:/data"]
-    restart: unless-stopped
-
-  sequential-thinking-mcp:
-    build: ./sequential-thinking
-    ports: ["8406:8406"]
-    restart: unless-stopped
-
-  uptime-kuma-mcp:
-    build: ./uptime-kuma
-    ports: ["8403:8403"]
-    env_file: [.env]          # UPTIME_KUMA_URL, UPTIME_KUMA_USERNAME, UPTIME_KUMA_PASSWORD, etc.
-    restart: unless-stopped
-
-  n8n-mcp:
-    build: ./n8n
-    ports: ["8402:8402"]
-    env_file: [.env]          # N8N_API_URL, N8N_API_KEY
-    restart: unless-stopped
-
-volumes:
-  memory-data:
-```
+To pin a version, change the package to e.g. `@remotion/mcp@4.0.0` in that server's Dockerfile.
 
 The custom servers (`ynab-mcp`, `excalidraw-mcp`) bring their own Dockerfile/compose in their repos.
