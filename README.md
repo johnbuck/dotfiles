@@ -9,13 +9,15 @@ secret scan).
 ```
 tooling/
 ├── hooks/pre-commit     # secret-leak guard (active for commits in this repo)
+├── mcp-servers/         # MCP server reference: custom-repo links + off-the-shelf wrappers
 └── dotfiles/
     ├── claude/          # Claude Code config — see dotfiles/claude/README.md
-    ├── opencode/        # (placeholder)
-    └── ghostty/         # (placeholder)
+    ├── opencode/        # OpenCode config
+    └── ghostty/         # Ghostty terminal config
 ```
 
 Each tool under `dotfiles/` is self-contained with its own README and (where relevant) installer.
+Custom MCP servers live in their own repos (linked from `mcp-servers/README.md`).
 
 ## Setup
 
