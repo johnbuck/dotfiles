@@ -22,19 +22,5 @@ services:
     ports: ["8405:8405"]
     restart: unless-stopped
 
-  n8n-mcp:
-    build: ./n8n
-    container_name: n8n-mcp
-    ports: ["8402:8402"]
-    env_file: [.env]          # needs N8N_API_URL + N8N_API_KEY to reach your n8n instance
-    restart: unless-stopped
-
-  uptime-kuma-mcp:
-    build: ./uptime-kuma
-    container_name: uptime-kuma-mcp
-    ports: ["8403:8403"]
-    env_file: [.env]          # needs your Uptime Kuma URL + credentials
-    restart: unless-stopped
-
 volumes:
   memory-data:
