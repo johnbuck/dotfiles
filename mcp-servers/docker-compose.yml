@@ -1,0 +1,40 @@
+# Off-the-shelf MCP server stack. Each image npm-installs its upstream package at build time
+# and exposes it over streamable HTTP via supergateway. Run: docker compose up -d --build
+# Custom servers (ynab-mcp, excalidraw-mcp) live in their own repos.
+
+services:
+  memory-mcp:
+    build: ./memory
+    container_name: memory-mcp
+    ports: ["8404:8404"]
+    volumes: ["memory-data:/data"]
+    restart: unless-stopped
+
+  sequential-thinking-mcp:
+    build: ./sequential-thinking
+    container_name: sequential-thinking-mcp
+    ports: ["8406:8406"]
+    restart: unless-stopped
+
+  remotion-mcp:
+    build: ./remotion
+    container_name: remotion-mcp
+    ports: ["8405:8405"]
+    restart: unless-stopped
+
+  n8n-mcp:
+    build: ./n8n
+    container_name: n8n-mcp
+    ports: ["8402:8402"]
+    env_file: [.env]          # needs N8N_API_URL + N8N_API_KEY to reach your n8n instance
+    restart: unless-stopped
+
+  uptime-kuma-mcp:
+    build: ./uptime-kuma
+    container_name: uptime-kuma-mcp
+    ports: ["8403:8403"]
+    env_file: [.env]          # needs your Uptime Kuma URL + credentials
+    restart: unless-stopped
+
+volumes:
+  memory-data:
