@@ -1,0 +1,31 @@
+# Theme
+theme = Hybrid
+
+# Font
+font-family = JetBrains Mono
+font-size = 13
+
+# Window
+background-opacity = 1
+window-padding-x = 10
+window-padding-y = 10
+
+# Scrollback
+scrollback-limit = 50000
+
+# Cursor
+cursor-style = bar
+cursor-style-blink = true
+
+# Shell integration (auto-detects bash/zsh/fish)
+shell-integration = detect
+
+# Copy/paste
+copy-on-select = clipboard
+clipboard-paste-protection = true
+
+# Mouse
+mouse-hide-while-typing = true
+
+# Quick terminal (drop-down quake-style with global hotkey)
+keybind = global:ctrl+grave_accent=toggle_quick_terminal
