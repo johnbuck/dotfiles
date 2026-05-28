@@ -1,0 +1,41 @@
+{
+  "version": 2,
+  "plugins": {
+    "frontend-design@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "__HOME__/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown",
+        "version": "unknown",
+        "installedAt": "2026-04-12T07:11:28.977Z",
+        "lastUpdated": "2026-04-12T07:11:28.977Z"
+      }
+    ],
+    "playwright@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "__HOME__/.claude/plugins/cache/claude-plugins-official/playwright/unknown",
+        "version": "unknown",
+        "installedAt": "2026-04-12T07:11:28.977Z",
+        "lastUpdated": "2026-04-12T07:11:28.977Z"
+      }
+    ],
+    "skill-creator@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "__HOME__/.claude/plugins/cache/claude-plugins-official/skill-creator/unknown",
+        "version": "unknown",
+        "installedAt": "2026-04-12T07:11:28.977Z",
+        "lastUpdated": "2026-04-12T07:11:28.977Z"
+      }
+    ],
+    "do-the-thing@local-do-the-thing": [
+      {
+        "scope": "user",
+        "installPath": "__HOME__/.claude/plugins/cache/local-do-the-thing/do-the-thing/0.1.0",
+        "version": "0.1.0",
+        "installedAt": "2026-04-12T07:11:28.977Z",
+        "lastUpdated": "2026-04-12T07:11:28.977Z"
+      }
+    ]
+  }
+}

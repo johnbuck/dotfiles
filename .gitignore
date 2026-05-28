@@ -1,0 +1,40 @@
+# ============================================================
+# Backstop against committing sensitive Claude Code state.
+# This repo is an ALLOWLIST (only vetted files are added by hand),
+# but these patterns block the dangerous ones even if copied in.
+# ============================================================
+
+# Credentials / auth
+.credentials.json
+**/.credentials.json
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+
+# Live MCP config (may contain bearer tokens) — only the .example is tracked
+.mcp.json
+**/.mcp.json
+!**/.mcp.json.example
+
+# Per-machine Claude Code runtime state (history, accounts, project data)
+.claude.json
+.claude.json.bak*
+history.jsonl
+*.jsonl
+mcp-needs-auth-cache.json
+oauthAccount*
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# Caches / transient
+*-cache.json
+plugin-catalog-cache.json
+__pycache__/
+node_modules/
+
+# OS noise
+.DS_Store

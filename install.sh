@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# Deploy this repo's Claude Code config into ~/.claude on the current machine.
+# - Resolves the __HOME__ token to your real $HOME.
+# - Backs up anything it would overwrite to ~/.claude/backups/config-import-<ts>/.
+# - Never touches credentials, history, or live .mcp.json.
+set -euo pipefail
+
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEST="$HOME/.claude"
+TS="$(date +%Y%m%d-%H%M%S)"
+BACKUP="$DEST/backups/config-import-$TS"
+
+say() { printf '\033[36m==>\033[0m %s\n' "$1"; }
+
+mkdir -p "$DEST" "$BACKUP"
+
+backup_if_exists() {
+  local target="$1"
+  if [ -e "$target" ]; then
+    local rel="${target#$DEST/}"
+    mkdir -p "$BACKUP/$(dirname "$rel")"
+    cp -r "$target" "$BACKUP/$rel"
+  fi
+}
+
+# Render a file replacing __HOME__ with the real home dir.
+render() {
+  sed "s|__HOME__|$HOME|g" "$1" > "$2"
+}
+
+say "Installing into $DEST (backups -> $BACKUP)"
+
+# settings.json (rendered)
+backup_if_exists "$DEST/settings.json"
+render "$REPO/settings.json" "$DEST/settings.json"
+say "settings.json written"
+
+# scripts/
+mkdir -p "$DEST/scripts"
+for f in "$REPO"/scripts/*; do
+  backup_if_exists "$DEST/scripts/$(basename "$f")"
+  cp "$f" "$DEST/scripts/"
+  chmod +x "$DEST/scripts/$(basename "$f")"
+done
+say "scripts/ installed"
+
+# agents/
+mkdir -p "$DEST/agents"
+for f in "$REPO"/agents/*.md; do
+  backup_if_exists "$DEST/agents/$(basename "$f")"
+  cp "$f" "$DEST/agents/"
+done
+say "agents/ installed"
+
+# local plugin (do-the-thing)
+backup_if_exists "$DEST/plugins/local/project-planning"
+mkdir -p "$DEST/plugins/local"
+rm -rf "$DEST/plugins/local/project-planning"
+cp -r "$REPO/plugins/local/project-planning" "$DEST/plugins/local/project-planning"
+say "local do-the-thing plugin installed"
+
+# plugin manifests (rendered) — reference state; backed up first
+mkdir -p "$DEST/plugins"
+for m in installed_plugins.json known_marketplaces.json; do
+  backup_if_exists "$DEST/plugins/$m"
+  render "$REPO/plugins/$m" "$DEST/plugins/$m"
+done
+say "plugin manifests written"
+
+# Wire the secret-scan hook for commits made in THIS repo.
+if [ -d "$REPO/.git" ]; then
+  git -C "$REPO" config core.hooksPath hooks
+  chmod +x "$REPO/hooks/pre-commit"
+  say "pre-commit secret-scan hook enabled for this repo"
+fi
+
+cat <<EOF
+
+Done.
+
+Next steps you do by hand (these involve secrets / accounts, never automated):
+  1. Log in:        claude  (then authenticate)
+  2. MCP servers:   cp $REPO/.mcp.json.example ~/.claude/.mcp.json  and fill in real tokens
+  3. Restart Claude Code so it picks up settings + plugins.
+
+Anything overwritten was backed up to: $BACKUP
+EOF

@@ -1,0 +1,14 @@
+{
+  "name": "local-do-the-thing",
+  "version": "0.1.0",
+  "plugins": [
+    {
+      "name": "do-the-thing",
+      "source": "./plugins/do-the-thing",
+      "description": "Skills for planning and scaffolding new coding projects (PRD, TRD)"
+    }
+  ],
+  "owner": {
+    "name": "wiley"
+  }
+}
