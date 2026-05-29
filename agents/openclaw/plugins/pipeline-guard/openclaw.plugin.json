@@ -1,0 +1,238 @@
+{
+  "id": "pipeline-guard",
+  "name": "Pipeline Guard",
+  "description": "Enforces Juliet's 15-stage build pipeline at the tool layer. Toggleable gates on sessions_spawn covering: only the orchestrator may dispatch per-stage skills (pipelineGate), builder needs a real spec file (specGate), every stage runs in its own git worktree (worktreeGate), validator must come after adversarial-review since the last builder (reviewGate), spec-reviewer must run before builder (specReviewGate), architecture-reviewer must run before builder (architectureReviewGate); system-architect must run before architecture-reviewer (systemArchitectGate), code-quality-checker must run between builder and the post-build adversarial-tester pass (qualityGate). Each gate ships in log mode and can be flipped to reject independently.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "repoRoot": {
+        "type": "string",
+        "default": "/app/repo",
+        "description": "Path inside the container to the repo whose branches the orchestrator dispatches against."
+      },
+      "worktreeBase": {
+        "type": "string",
+        "default": "/tmp/openclaw-worktrees",
+        "description": "Parent dir for per-orchestrator worktrees. Pair with `git worktree prune` cron for cleanup."
+      },
+      "workspaceRoot": {
+        "type": "string",
+        "default": "/home/node/.openclaw/workspace",
+        "description": "Workspace root, used by the spec gate to resolve `Spec: backlog/...md` paths."
+      },
+      "stageSkillBasenames": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": [
+          "builder",
+          "adversarial-tester",
+          "test-reviewer",
+          "adversarial-reviewer",
+          "validator",
+          "spec-reviewer",
+          "system-architect",
+          "architecture-reviewer",
+          "code-quality-checker",
+          "integration-validator",
+          "post-merge-validator"
+        ],
+        "description": "Stage skill names whose direct dispatch the pipeline gate forbids (only pipeline-orchestrator may invoke them)."
+      },
+      "orchestratorSkillBasename": {
+        "type": "string",
+        "default": "pipeline-orchestrator",
+        "description": "Name of the skill that is allowed to dispatch stage skills."
+      },
+      "pipelineGate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "log",
+              "reject"
+            ],
+            "default": "log"
+          }
+        },
+        "default": {
+          "enabled": true,
+          "mode": "log"
+        }
+      },
+      "specGate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "log",
+              "reject"
+            ],
+            "default": "log"
+          }
+        },
+        "default": {
+          "enabled": true,
+          "mode": "log"
+        }
+      },
+      "worktreeGate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "log",
+              "rewrite",
+              "reject"
+            ],
+            "default": "log",
+            "description": "log: detect+log only. rewrite: physically create the worktree and rewrite the task. reject: block if the task doesn't already reference a worktree."
+          }
+        },
+        "default": {
+          "enabled": true,
+          "mode": "log"
+        }
+      },
+      "reviewGate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "log",
+              "reject"
+            ],
+            "default": "log"
+          }
+        },
+        "default": {
+          "enabled": true,
+          "mode": "log"
+        }
+      },
+      "specReviewGate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "log",
+              "reject"
+            ],
+            "default": "log"
+          }
+        },
+        "default": {
+          "enabled": true,
+          "mode": "log"
+        },
+        "description": "v0.10 \u2014 builder cannot run until spec-reviewer ran in this orch session."
+      },
+      "qualityGate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "log",
+              "reject"
+            ],
+            "default": "log"
+          }
+        },
+        "default": {
+          "enabled": true,
+          "mode": "log"
+        },
+        "description": "v0.10 \u2014 adversarial-tester (build-validation pass) cannot run if a builder ran but no code-quality-checker ran since."
+      },
+      "stateTtlMs": {
+        "type": "number",
+        "default": 3600000,
+        "description": "How long an orchestrator state record lives before garbage collection (1h default)."
+      },
+      "architectureReviewGate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "log",
+              "reject"
+            ],
+            "default": "log"
+          }
+        },
+        "default": {
+          "enabled": true,
+          "mode": "log"
+        },
+        "description": "v0.10 (renamed v0.16) \u2014 builder cannot run until architecture-reviewer ran in this orch session."
+      },
+      "systemArchitectGate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "log",
+              "reject"
+            ],
+            "default": "log"
+          }
+        },
+        "default": {
+          "enabled": true,
+          "mode": "log"
+        },
+        "description": "v0.16 \u2014 architecture-reviewer cannot run until system-architect ran in this orch session."
+      }
+    }
+  }
+}

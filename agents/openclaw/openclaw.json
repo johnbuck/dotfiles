@@ -1,0 +1,333 @@
+{
+  "auth": {
+    "cooldowns": {
+      "overloadedBackoffMs": 5000,
+      "overloadedProfileRotations": 1,
+      "rateLimitedProfileRotations": 1,
+      "failureWindowHours": 0.5,
+      "billingBackoffHours": 1,
+      "authPermanentBackoffMinutes": 5
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "glm/glm-5.1",
+        "fallbacks": [
+          "openrouter/deepseek/deepseek-v4-pro",
+          "openrouter/z-ai/glm-5.1",
+          "openrouter/deepseek/deepseek-v4-flash",
+          "llama/Qwen3.6-35B-A3B-UD-IQ4_NL_XL"
+        ]
+      },
+      "imageGenerationModel": {
+        "primary": "comfy/workflow"
+      },
+      "subagents": {
+        "maxSpawnDepth": 2,
+        "maxChildrenPerAgent": 5,
+        "maxConcurrent": 8
+      },
+      "heartbeat": {
+        "every": "30m",
+        "lightContext": true,
+        "isolatedSession": true
+      },
+      "compaction": {
+        "postCompactionSections": [
+          "Session Startup",
+          "Red Lines",
+          "Coding Principles"
+        ]
+      }
+    },
+    "list": [
+      {
+        "id": "main",
+        "heartbeat": {
+          "every": "30m",
+          "lightContext": false,
+          "isolatedSession": false
+        }
+      },
+      {
+        "id": "doug",
+        "name": "doug",
+        "workspace": "/home/node/.openclaw/agents/doug/workspace",
+        "agentDir": "/home/node/.openclaw/agents/doug/agent",
+        "heartbeat": {
+          "every": "30m",
+          "lightContext": true,
+          "isolatedSession": true
+        }
+      }
+    ]
+  },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "glm": {
+        "baseUrl": "http://gateway:8080/glm/api/anthropic",
+        "api": "anthropic-messages",
+        "apiKey": "dummy",
+        "request": {
+          "allowPrivateNetwork": true
+        },
+        "models": [
+          {
+            "id": "glm-5.1",
+            "name": "GLM 5.1",
+            "contextWindow": 202752,
+            "maxTokens": 65535
+          },
+          {
+            "id": "glm-5-turbo",
+            "name": "GLM 5 Turbo",
+            "contextWindow": 200000,
+            "maxTokens": 8192
+          },
+          {
+            "id": "glm-4.7",
+            "name": "GLM 4.7",
+            "contextWindow": 200000,
+            "maxTokens": 8192
+          }
+        ]
+      },
+      "openrouter": {
+        "baseUrl": "http://gateway:8080/openrouter/api/v1",
+        "api": "openai-completions",
+        "apiKey": "dummy",
+        "request": {
+          "allowPrivateNetwork": true
+        },
+        "models": [
+          {
+            "id": "deepseek/deepseek-v4-pro",
+            "name": "DeepSeek V4 Pro",
+            "contextWindow": 164000,
+            "maxTokens": 16384
+          },
+          {
+            "id": "z-ai/glm-5.1",
+            "name": "GLM 5.1 (OpenRouter)",
+            "contextWindow": 202752,
+            "maxTokens": 65535
+          },
+          {
+            "id": "deepseek/deepseek-v4-flash",
+            "name": "DeepSeek V4 Flash",
+            "contextWindow": 164000,
+            "maxTokens": 16384
+          }
+        ]
+      },
+      "llama": {
+        "baseUrl": "http://gateway:8080/llama/v1",
+        "api": "openai-completions",
+        "apiKey": "dummy",
+        "request": {
+          "allowPrivateNetwork": true
+        },
+        "models": [
+          {
+            "id": "Qwen3.6-35B-A3B-UD-IQ4_NL_XL",
+            "name": "Qwen 3.6 35B (Local)",
+            "contextWindow": 131072,
+            "maxTokens": 8192
+          }
+        ]
+      },
+      "gemini": {
+        "baseUrl": "http://gateway:8080/gemini",
+        "api": "google-generative-ai",
+        "apiKey": "dummy",
+        "request": {
+          "allowPrivateNetwork": true
+        },
+        "models": [
+          {
+            "id": "gemini-2.5-flash-image",
+            "name": "Gemini 2.5 Flash Image",
+            "contextWindow": 1000000,
+            "maxTokens": 8192
+          }
+        ]
+      }
+    }
+  },
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "apiRoot": "http://gateway:8080/telegram",
+      "groups": {
+        "*": {
+          "requireMention": true
+        }
+      },
+      "accounts": {
+        "default": {
+          "dmPolicy": "pairing"
+        },
+        "doug": {
+          "name": "Doug",
+          "enabled": true,
+          "tokenFile": "/home/node/.openclaw/agents/doug/.telegram-token"
+        }
+      }
+    }
+  },
+  "hooks": {
+    "enabled": true,
+    "token": "${OPENCLAW_HOOK_TOKEN}",
+    "path": "/hooks"
+  },
+  "gateway": {
+    "mode": "local",
+    "bind": "lan",
+    "auth": {
+      "mode": "token",
+      "token": "${GATEWAY_AUTH_TOKEN}"
+    },
+    "controlUi": {
+      "allowedOrigins": [
+        "http://localhost:18789",
+        "http://127.0.0.1:18789"
+      ]
+    }
+  },
+  "plugins": {
+    "entries": {
+      "openrouter": {
+        "enabled": true
+      },
+      "comfy": {
+        "enabled": true,
+        "config": {
+          "mode": "local",
+          "baseUrl": "http://172.20.0.2:8080/comfyui",
+          "allowPrivateNetwork": true,
+          "image": {
+            "workflowPath": "/home/node/.openclaw/workflows/sdxl-text-to-image.json",
+            "promptNodeId": "6",
+            "outputNodeId": "9"
+          }
+        }
+      },
+      "bonjour": {
+        "enabled": false
+      },
+      "browser": {
+        "enabled": true
+      },
+      "recall-group-injector": {
+        "enabled": true
+      },
+      "pipeline-guard": {
+        "enabled": true,
+        "config": {
+          "worktreeGate": {
+            "mode": "rewrite"
+          },
+          "specGate": {
+            "mode": "reject"
+          },
+          "reviewGate": {
+            "mode": "reject"
+          },
+          "pipelineGate": {
+            "mode": "reject"
+          },
+          "specReviewGate": {
+            "mode": "reject"
+          },
+          "architectureReviewGate": {
+            "mode": "reject"
+          },
+          "qualityGate": {
+            "mode": "reject"
+          },
+          "repoRoot": "/app/repo",
+          "systemArchitectGate": {
+            "mode": "reject"
+          },
+          "testAgainGate": {
+            "mode": "reject"
+          },
+          "integrationGate": {
+            "mode": "reject"
+          },
+          "specHashGate": {
+            "mode": "log"
+          }
+        }
+      }
+    },
+    "installs": {
+      "recall-group-injector": {
+        "source": "path",
+        "sourcePath": "/home/node/.openclaw/extensions/recall-group-injector",
+        "installPath": "/home/node/.openclaw/extensions/recall-group-injector",
+        "version": "1.0.0",
+        "installedAt": "2026-05-02T19:04:09.000Z"
+      },
+      "pipeline-guard": {
+        "source": "path",
+        "sourcePath": "/home/node/.openclaw/extensions/pipeline-guard",
+        "installPath": "/home/node/.openclaw/extensions/pipeline-guard",
+        "version": "0.1.0",
+        "installedAt": "2026-05-05T02:51:58.728568Z"
+      }
+    },
+    "allow": [
+      "recall-group-injector",
+      "telegram",
+      "openrouter",
+      "browser",
+      "comfy",
+      "memory-core",
+      "pipeline-guard"
+    ]
+  },
+  "meta": {
+    "lastTouchedVersion": "2026.4.24",
+    "lastTouchedAt": "2026-05-04T22:11:53.540Z"
+  },
+  "mcp": {
+    "servers": {
+      "todoist": {
+        "url": "http://gateway:8080/mcp/todoist/mcp",
+        "transport": "streamable-http"
+      },
+      "uptime-kuma": {
+        "url": "http://gateway:8080/mcp/uptime-kuma/mcp",
+        "transport": "streamable-http"
+      },
+      "recall": {
+        "url": "http://gateway:8080/mcp/recall-juliet/mcp",
+        "transport": "streamable-http"
+      }
+    }
+  },
+  "browser": {
+    "executablePath": "/usr/bin/chromium",
+    "headless": true,
+    "noSandbox": true,
+    "ssrfPolicy": {
+      "allowedHostnames": [
+        "gateway"
+      ],
+      "dangerouslyAllowPrivateNetwork": true
+    }
+  },
+  "bindings": [
+    {
+      "type": "route",
+      "agentId": "doug",
+      "match": {
+        "channel": "telegram",
+        "accountId": "doug"
+      }
+    }
+  ]
+}
