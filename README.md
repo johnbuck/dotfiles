@@ -1,6 +1,6 @@
 # tooling
 
-My dev setup. Portable across machines. No secrets.
+Dev setup. Portable across machines. No secrets.
 
 A pre-commit scan blocks any commit with a token or sensitive filename.
 
