@@ -1,0 +1,27 @@
+{
+  "id": "sessions-worktree-injector",
+  "name": "Sessions Worktree Injector",
+  "description": "Rewrites sessions_spawn task strings so each subagent works in its own git worktree instead of sharing the parent's checkout. Prevents concurrent-edit clobbers between parallel builders on different branches. Default mode is 'log' (observe-only) until verified; flip to 'rewrite' to enable the rewrite.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "mode": {
+        "type": "string",
+        "enum": ["off", "log", "rewrite"],
+        "default": "log",
+        "description": "off=disabled, log=detect+log only, rewrite=rewrite task to use worktree"
+      },
+      "repoRoot": {
+        "type": "string",
+        "default": "/app/repo",
+        "description": "Path inside the container to the repo whose branches the orchestrator dispatches against."
+      },
+      "worktreeBase": {
+        "type": "string",
+        "default": "/tmp/openclaw-worktrees",
+        "description": "Parent dir for per-subagent worktrees. Pair with `git worktree prune` cron for cleanup."
+      }
+    }
+  }
+}
