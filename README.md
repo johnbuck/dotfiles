@@ -1,36 +1,34 @@
 # tooling
 
-Personal development tooling and machine setup — portable across machines (e.g. onto a work box).
-**Contains no secrets, credentials, or personal data** (enforced by `.gitignore` + a pre-commit
-secret scan).
+My dev setup. Portable across machines. No secrets.
+
+A pre-commit scan blocks any commit with a token or sensitive filename.
 
 ## Layout
 
 ```
 tooling/
-├── hooks/pre-commit     # secret-leak guard (active for commits in this repo)
-├── mcp-servers/         # MCP server reference: custom-repo links + off-the-shelf wrappers
+├── hooks/pre-commit   # secret guard
+├── agents/            # AI agent configs (OpenClaw / Juliet)
+├── mcp-servers/       # MCP server links + wrappers
 └── dotfiles/
-    ├── claude/          # Claude Code config — see dotfiles/claude/README.md
-    ├── opencode/        # OpenCode config
-    └── ghostty/         # Ghostty terminal config
+    ├── claude/        # Claude Code
+    ├── opencode/      # OpenCode
+    └── ghostty/       # Ghostty terminal
 ```
 
-Each tool under `dotfiles/` is self-contained with its own README and (where relevant) installer.
-Custom MCP servers live in their own repos (linked from `mcp-servers/README.md`).
+Each folder has its own README.
 
 ## Setup
 
 ```bash
 git clone https://github.com/johnbuck/tooling ~/tooling
 cd ~/tooling
-git config core.hooksPath hooks     # enable the secret-scan hook
+git config core.hooksPath hooks    # turn on the secret scan
 ```
 
-Then install whichever tool config you want, e.g. `dotfiles/claude/install.sh`.
+Then run the installer for whatever you want, e.g. `dotfiles/claude/install.sh`.
 
 ## Safety
 
-This repo is an **allowlist** — only hand-vetted files are tracked. The `.gitignore` and
-`hooks/pre-commit` (gitleaks if installed, else a grep fallback) are backstops that block any
-commit containing a token or a known-sensitive filename.
+Allowlist only. Nothing is tracked unless I added it by hand. `.gitignore` and the pre-commit hook catch the rest.
