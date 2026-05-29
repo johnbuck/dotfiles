@@ -22,6 +22,15 @@ These are upstream npm packages, each run as a stdio server and exposed over HTT
 | sequential-thinking | [`@modelcontextprotocol/server-sequential-thinking`](https://www.npmjs.com/package/@modelcontextprotocol/server-sequential-thinking) | 8406 |
 | remotion | [`@remotion/mcp`](https://www.npmjs.com/package/@remotion/mcp) | 8405 |
 
+## Stdio servers (run directly — no wrapper, no port)
+
+The client launches these as a local stdio subprocess; there's no Docker image or supergateway
+port. Wiring is the matching `stdio` entry in `dotfiles/claude/.mcp.json.example`.
+
+| Server | npm package | Notes |
+|--------|-------------|-------|
+| playwright | [`@playwright/mcp`](https://www.npmjs.com/package/@playwright/mcp) | Browser automation. Launched as `npx -y @playwright/mcp@latest --browser chromium`. Also installable as the `playwright@claude-plugins-official` Claude Code plugin. |
+
 ## Running the stack
 
 The build files are in this directory — `docker-compose.yml` plus a `<server>/Dockerfile` per
