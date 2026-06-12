@@ -52,6 +52,37 @@ for f in "$REPO"/agents/*.md; do
 done
 say "agents/ installed"
 
+# workflows/ (e.g. baton)
+if [ -d "$REPO/workflows" ]; then
+  mkdir -p "$DEST/workflows"
+  for f in "$REPO"/workflows/*; do
+    backup_if_exists "$DEST/workflows/$(basename "$f")"
+    cp "$f" "$DEST/workflows/"
+  done
+  say "workflows/ installed"
+fi
+
+# commands/ (slash commands, e.g. /baton)
+if [ -d "$REPO/commands" ]; then
+  mkdir -p "$DEST/commands"
+  for f in "$REPO"/commands/*.md; do
+    backup_if_exists "$DEST/commands/$(basename "$f")"
+    cp "$f" "$DEST/commands/"
+  done
+  say "commands/ installed"
+fi
+
+# hooks/ (Claude Code hooks, e.g. baton-guard.sh — opt-in per repo via settings.json)
+if [ -d "$REPO/hooks" ]; then
+  mkdir -p "$DEST/hooks"
+  for f in "$REPO"/hooks/*; do
+    backup_if_exists "$DEST/hooks/$(basename "$f")"
+    cp "$f" "$DEST/hooks/"
+    chmod +x "$DEST/hooks/$(basename "$f")"
+  done
+  say "hooks/ installed"
+fi
+
 # local plugin (do-the-thing)
 backup_if_exists "$DEST/plugins/local/project-planning"
 mkdir -p "$DEST/plugins/local"
