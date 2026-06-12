@@ -10,7 +10,8 @@ secrets, credentials, conversation history, or personal data.**
 |------|------------|
 | `settings.json` | Permissions (allow/deny/ask), statusline, enabled plugins, effort prefs. Paths use a `__HOME__` token that `install.sh` resolves. |
 | `scripts/` | Statusline scripts (`context-status.sh`, `context-warn.sh`) referenced by `settings.json`. |
-| `agents/` | Subagent definitions (skill / slash-command / subagent auditors). |
+| `agents/` | Subagent definitions (skill / slash-command / subagent auditors, plus the `baton-*` pipeline agents). |
+| `workflows/`, `commands/`, `hooks/` | **baton** — a multi-agent build/review pipeline (`/baton <spec>`): plan → test-first → build → review → auto-merge, each run in its own git worktree. See [`BATON.md`](./BATON.md). |
 | `plugins/local/project-planning/` | Local `do-the-thing` plugin (`do-specs` + `do-scaffold` skills). Eval/benchmark artifacts were stripped — only the working plugin ships. |
 | `plugins/*.json` | Manifest of which marketplaces/plugins to install (reference + used by installer). |
 | `.mcp.json.example` | Full MCP server set (sanitized). `__MCP_HOST__` placeholder for the LAN host; tokens via `${ENV_VAR}`. Copy to `~/.claude/.mcp.json` and fill in. |
