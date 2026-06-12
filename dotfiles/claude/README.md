@@ -29,8 +29,8 @@ Never committed — these stay on each machine and are blocked by `.gitignore` +
 ## Install on a new machine
 
 ```bash
-git clone https://github.com/johnbuck/tooling ~/tooling
-cd ~/tooling/dotfiles/claude
+git clone https://github.com/johnbuck/dotfiles ~/dotfiles
+cd ~/dotfiles/dotfiles/claude
 ./install.sh
 ```
 

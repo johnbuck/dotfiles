@@ -35,7 +35,7 @@ Permission allow-paths (`~/projects/**`, `~/Docker/**`, …) are generic example
 ## Install on a new machine
 
 ```bash
-cd ~/tooling/dotfiles/opencode
+cd ~/dotfiles/dotfiles/opencode
 ./install.sh
 ```
 
