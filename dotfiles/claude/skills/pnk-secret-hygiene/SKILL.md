@@ -73,6 +73,30 @@ wc -l file.env                            # structure only
 docker exec <ct> sh -c 'printenv MY_KEY | wc -c'   # length only, never the value
 ```
 
+## Handing a secret to a human (placeholder pattern)
+
+When a value can only come from a person (a BotFather token, an OAuth client secret, an API key they
+hold) it must **not** pass through your context — don't ask them to paste it into the chat, and don't
+take it via a tool result. Instead **pre-create the named secret with a throwaway placeholder** so the
+key appears in the Infisical UI for them to overwrite. You own the *name*; they own the *value*.
+
+```bash
+# Create the slot(s). You supply the NAME and a placeholder — never the real value.
+printf '%s' 'REPLACE_IN_UI' | "$CLAUDE_SKILL_DIR/scripts/infisical-set-stdin.sh" \
+  --name TELEGRAM_BOT_TOKEN --projectId <PID> --env <ENV> --path /
+# Confirm by listing KEY NAMES only — never values:
+#   curl -s --config <authfile> ".../secrets/raw?..." | jq -r '.secrets[].secretKey'
+```
+
+- The human overwrites the placeholder in the UI, **or** runs a `read -rs` setter in *their own*
+  terminal (interactive `read -s` can't run from your non-interactive tool shell). Either way the real
+  value never enters your context.
+- **Env-slug footgun:** if a project has two similarly-named environments (e.g. `prod` vs
+  `production`), create the slot in the *exact* slug the injector reads, and tell the human which tab to
+  edit — otherwise they paste into a slot nothing consumes.
+- Non-secret companions (a chat ID, a username) can be set directly — but creating them as placeholders
+  too keeps the whole set visible and editable in one place.
+
 ## Infisical essentials
 
 - **Self-hosted is the default assumption.** Always pass the instance endpoint
