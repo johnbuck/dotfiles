@@ -27,7 +27,7 @@
 #   - programmatic reads: `python -c "open('.env')…"`, `node -e`, `perl -e`
 #   - `infisical run -- printenv` (dumps the injected env)
 #   - shell read-loop `while read … < .env`
-# Tested 105/105 deny+allow (see homelab backlog P2-claude-secret-hygiene-skill.md §7).
+# Tested 105/105 deny+allow cases (evasion variants, false-positive checks, edge cases).
 
 set -euo pipefail
 set -f   # no globbing — the token loops iterate $cmd unquoted on purpose
