@@ -10,10 +10,10 @@ secrets, credentials, conversation history, or personal data.**
 |------|------------|
 | `settings.json` | Permissions (allow/deny/ask), statusline, enabled plugins, effort prefs. Paths use a `__HOME__` token that `install.sh` resolves. |
 | `scripts/` | Statusline scripts (`context-status.sh`, `context-warn.sh`) referenced by `settings.json`. |
-| `agents/` | Subagent definitions (skill / slash-command / subagent auditors, plus the `baton-*` pipeline agents). |
-| `workflows/`, `commands/`, `hooks/` | **baton** — a multi-agent build/review pipeline (`/baton <spec>`): plan → test-first → build → review → auto-merge, each run in its own git worktree. See [`BATON.md`](./BATON.md). |
-| `skills/` | Claude Code [Skills](https://code.claude.com/docs/en/skills). `secret-hygiene` — auto-loads when a task touches secrets/credentials/Infisical; teaches not leaking values to context + safe Infisical CLI/API use. SKILL.md + `references/` + a stdin-only safe-write helper. |
-| `hooks/secret-leak-guard.sh` | PreToolUse(Bash\|Read) guard that hard-blocks the highest-confidence secret-leak commands (`infisical secrets get`/unredirected `export`/`set`, `--plain` dumps, `cat`/`grep` of `.env`/key files, `curl` of `/secrets/raw`, full `env` dumps, reading credential files). Wired **globally** in `settings.json` (unlike `baton-guard`, which is per-repo). Companion backstop to the `secret-hygiene` skill. |
+| `agents/` | Subagent definitions (skill / slash-command / subagent auditors, plus the `pnk-baton-*` pipeline agents). |
+| `workflows/`, `commands/`, `hooks/` | **pnk-baton** — a multi-agent build/review pipeline (`/pnk-baton <spec>`): plan → test-first → build → review → auto-merge, each run in its own git worktree. See [`PNK-BATON.md`](./PNK-BATON.md). |
+| `skills/` | Claude Code [Skills](https://code.claude.com/docs/en/skills). `pnk-secret-hygiene` — auto-loads when a task touches secrets/credentials/Infisical; teaches not leaking values to context + safe Infisical CLI/API use. SKILL.md + `references/` + a stdin-only safe-write helper. |
+| `hooks/secret-leak-guard.sh` | PreToolUse(Bash\|Read) guard that hard-blocks the highest-confidence secret-leak commands (`infisical secrets get`/unredirected `export`/`set`, `--plain` dumps, `cat`/`grep` of `.env`/key files, `curl` of `/secrets/raw`, full `env` dumps, reading credential files). Wired **globally** in `settings.json` (unlike `pnk-baton-guard`, which is per-repo). Companion backstop to the `pnk-secret-hygiene` skill. |
 | `plugins/local/project-planning/` | Local `do-the-thing` plugin (`do-specs` + `do-scaffold` skills). Eval/benchmark artifacts were stripped — only the working plugin ships. |
 | `plugins/*.json` | Manifest of which marketplaces/plugins to install (reference + used by installer). |
 | `.mcp.json.example` | Full MCP server set (sanitized). `__MCP_HOST__` placeholder for the LAN host; tokens via `${ENV_VAR}`. Copy to `~/.claude/.mcp.json` and fill in. |

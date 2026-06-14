@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# baton-guard — PreToolUse(Bash) guard enforcing feature-branch discipline.
+# pnk-baton-guard — PreToolUse(Bash) guard enforcing feature-branch discipline.
 #
 # Install PER CONSUMER CODE-REPO (not user-global), because some repos
 # (e.g. a docs repo synced to main) legitimately commit straight to main.
@@ -7,7 +7,7 @@
 #
 #   { "hooks": { "PreToolUse": [ { "matcher": "Bash",
 #       "hooks": [ { "type": "command",
-#         "command": "$HOME/.claude/hooks/baton-guard.sh" } ] } ] } }
+#         "command": "$HOME/.claude/hooks/pnk-baton-guard.sh" } ] } ] } }
 #
 # Denies: creating a commit while HEAD is main/master, and force-pushing to
 # main/master. Allows `git merge --ff-only` (moves the ref, creates no commit)
@@ -31,14 +31,14 @@ branch="$(git -C "$cwd" branch --show-current 2>/dev/null || echo "")"
 if printf '%s' "$cmd" | grep -Eq 'git[[:space:]]+push' \
    && printf '%s' "$cmd" | grep -Eq -- '--force|--force-with-lease|-f([[:space:]]|$)' \
    && printf '%s' "$cmd" | grep -Eq '(main|master)'; then
-  deny "baton-guard: force-push to a protected branch is blocked. Use a feature branch."
+  deny "pnk-baton-guard: force-push to a protected branch is blocked. Use a feature branch."
 fi
 
 # creating a commit while on main/master (allow ff-only merges)
 if printf '%s' "$cmd" | grep -Eq 'git[[:space:]]+commit'; then
   case "$branch" in
     main|master)
-      deny "baton-guard: direct commit to '$branch' is blocked. Create a feature branch first (git checkout -b <branch>)."
+      deny "pnk-baton-guard: direct commit to '$branch' is blocked. Create a feature branch first (git checkout -b <branch>)."
       ;;
   esac
 fi

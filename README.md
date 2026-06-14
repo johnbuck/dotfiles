@@ -13,7 +13,7 @@ dotfiles/
 ├── agents/            # AI agent configs (OpenClaw)
 ├── mcp-servers/       # MCP server links + wrappers
 └── dotfiles/
-    ├── claude/        # Claude Code (incl. the baton pipeline — see dotfiles/claude/BATON.md)
+    ├── claude/        # Claude Code (incl. the pnk-baton pipeline — see dotfiles/claude/PNK-BATON.md)
     ├── opencode/      # OpenCode
     └── ghostty/       # Ghostty terminal
 ```

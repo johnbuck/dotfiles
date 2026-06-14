@@ -1,5 +1,5 @@
 ---
-name: secret-hygiene
+name: pnk-secret-hygiene
 description: >-
   Handles secrets without leaking their values to context, and covers safe
   Infisical use (CLI and REST API). Applies before reading, writing, rotating,
