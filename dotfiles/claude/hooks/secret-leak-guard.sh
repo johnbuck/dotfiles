@@ -20,6 +20,14 @@
 # a safe-fail; distinguishing execution from a quoted literal by regex isn't
 # reliable, and a carve-out would be a bypass hole. Workaround: put the text in a
 # file (`git commit -F msg`) or use the Write tool — neither is matched.
+#
+# KNOWN RESIDUALS (by design — the skill covers these behaviorally; not denied here
+# because a precise rule would break a recommended safe form or over-block):
+#   - `awk '{print}' file` (awk must stay allowed for the safe `awk -F= '{print $1}'`)
+#   - programmatic reads: `python -c "open('.env')…"`, `node -e`, `perl -e`
+#   - `infisical run -- printenv` (dumps the injected env)
+#   - shell read-loop `while read … < .env`
+# Tested 105/105 deny+allow (see homelab backlog P2-claude-secret-hygiene-skill.md §7).
 
 set -euo pipefail
 set -f   # no globbing — the token loops iterate $cmd unquoted on purpose
@@ -66,6 +74,16 @@ has() { printf '%s' "$cmd" | grep -Eq -- "$1"; }   # -- so patterns may start wi
 has_stdout_redirect() { printf '%s' "$cmd" | grep -Eq '(&>|1>|(^|[^0-9&])>)'; }
 # a non-printing grep flag (presence/count only — safe)
 grep_is_safe() { printf '%s' "$cmd" | grep -Eq -- '(^|[[:space:]])-[A-Za-z]*[qlcL]|--quiet|--silent|--files-with-matches|--count'; }
+# does any bare argument of the command name a credential file? (handles dd's if=FILE)
+touches_secret_file() {
+  local tok t
+  for tok in $cmd; do
+    t="${tok%\"}"; t="${t#\"}"; t="${t%\'}"; t="${t#\'}"; t="${t#if=}"
+    case "$t" in -*|'') continue ;; esac
+    is_secret_file "$t" && return 0
+  done
+  return 1
+}
 
 # ── Infisical (the incident class) ───────────────────────────────────────────
 if has 'infisical[[:space:]]+secrets[[:space:]]+get'; then
@@ -105,30 +123,27 @@ if has '(set[[:space:]]+-[A-Za-z]*x|(bash|sh)[[:space:]]+-[A-Za-z]*x)' \
 fi
 
 # ── cat-family / pagers reading a credential file ────────────────────────────
-if has '(^|[^[:alnum:]_-])(cat|bat|tac|nl|head|tail|less|more|most|view|xxd|hexdump|od|strings)([[:space:]])'; then
-  for tok in $cmd; do
-    t="${tok%\"}"; t="${t#\"}"; t="${t%\'}"; t="${t#\'}"
-    case "$t" in -*|'') continue ;; esac
-    if is_secret_file "$t"; then
-      deny "secret-leak-guard: printing a credential file dumps its values into context. Use \`awk -F= '{print \$1}' file\` (names), \`wc -l file\` (count), or \`grep -q '^NAME=' file\` (presence). (Allowed for *.example/*.md.)"
-    fi
-  done
+if has '(^|[^[:alnum:]_-])(cat|bat|tac|nl|head|tail|less|more|most|view|xxd|hexdump|od|strings)([[:space:]])' \
+   && touches_secret_file; then
+  deny "secret-leak-guard: printing a credential file dumps its values into context. Use \`awk -F= '{print \$1}' file\` (names), \`wc -l file\` (count), or \`grep -q '^NAME=' file\` (presence). (Allowed for *.example/*.md.)"
 fi
 
 # ── grep that would print value lines from a credential file ─────────────────
-if has '(^|[^[:alnum:]_-])(grep|egrep|fgrep|rg|ag)([[:space:]])' && ! grep_is_safe; then
-  for tok in $cmd; do
-    t="${tok%\"}"; t="${t#\"}"; t="${t%\'}"; t="${t#\'}"
-    case "$t" in -*|'') continue ;; esac
-    if is_secret_file "$t"; then
-      deny "secret-leak-guard: grepping a credential file prints matching value lines into context. Use \`grep -q\`/\`-l\`/\`-c\` (presence/count only) or \`awk -F= '{print \$1}' file\` for names."
-    fi
-  done
+if has '(^|[^[:alnum:]_-])(grep|egrep|fgrep|rg|ag)([[:space:]])' && ! grep_is_safe && touches_secret_file; then
+  deny "secret-leak-guard: grepping a credential file prints matching value lines into context. Use \`grep -q\`/\`-l\`/\`-c\` (presence/count only) or \`awk -F= '{print \$1}' file\` for names."
+fi
+
+# ── sed (without -i) / dd (without of=) reading a credential file to stdout ───
+if has '(^|[^[:alnum:]_-])sed([[:space:]])' && ! has '(^|[[:space:]])-i' && touches_secret_file; then
+  deny "secret-leak-guard: \`sed\` without \`-i\` prints the credential file to stdout (context). Edit in place with \`-i\`, or read names with \`awk -F= '{print \$1}' file\`."
+fi
+if has '(^|[^[:alnum:]_-])dd([[:space:]])' && ! has 'of=' && touches_secret_file; then
+  deny "secret-leak-guard: \`dd\` reading a credential file with no \`of=\` prints it to stdout (context). Don't — check presence/length instead."
 fi
 
 # ── full env dump that includes secrets ──────────────────────────────────────
 # `printenv`/`env` with NO args (whole environment) and not piped to a length check.
-if has '(^|[;&|][[:space:]]*)(printenv|env)([[:space:]]*$|[[:space:]]*[;&|])' && ! has 'wc[[:space:]]+-c'; then
+if has '(^|[;&][[:space:]]*)(printenv|env)([[:space:]]*$|[[:space:]]*[;&])'; then
   deny "secret-leak-guard: a bare \`printenv\`/\`env\` dumps every variable (incl. secrets) to context. Check one var's length instead: \`printenv NAME | wc -c\`."
 fi
 if has 'docker[[:space:]]+(exec|run)[^|]*[[:space:]](env|printenv)([[:space:]]*$|[[:space:]]*['"'"'"]?$)' && ! has 'wc[[:space:]]+-c'; then
