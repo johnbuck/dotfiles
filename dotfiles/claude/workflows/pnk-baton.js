@@ -31,12 +31,30 @@ const validate = A.validate ?? false
 const wantMerge = A.merge ?? true
 const maxRetries = A.maxRetries ?? 2
 
+// Remote target (optional). When set (e.g. "user@host"), the repo,
+// worktree, every source/test file, git, and the test command live on that host —
+// NOT on this machine. Every stage reaches it over ssh. `repo`, `base`, `branch`,
+// `spec`, and the worktree are all paths/refs ON the remote host.
+const sshHost = (A.ssh || A.remote || '').trim() || null
+const remoteNote = sshHost ? `
+
+=== REMOTE TARGET — all work happens over SSH ===
+The repository, your worktree, every source/test file, git, and the test command live on a REMOTE host, NOT this machine. Reach it with: \`ssh ${sshHost}\`. Every path below (repository, worktree, spec) is a path ON that host.
+Hard rules:
+- Run EVERY git, file, and test command on the remote by wrapping it: \`ssh ${sshHost} '<command>'\`. Quote the WHOLE command so pipes / && / redirects run remotely, not on this machine.
+- The Read / Edit / Write / Grep / Glob tools act on THIS machine and CANNOT see the remote tree. Read a file with \`ssh ${sshHost} 'cat <path>'\` (or \`sed -n\`, \`grep\`). To create or replace a file, write it to a LOCAL temp first, then pipe it over: \`ssh ${sshHost} 'cat > <remote-path>' < /tmp/local\`. To edit in place, fetch → change locally → pipe back.
+- The remote login shell may be fish: for ANY bash syntax (loops, \`$(...)\`, heredocs, \`[[ ]]\`) use \`ssh ${sshHost} bash -lc '<script>'\` or pipe a script: \`ssh ${sshHost} bash -s < /tmp/script.sh\`.
+- Do your git work via \`ssh ${sshHost} git -C <path> ...\`. Keep the worktree, commits, and tests entirely on the remote — never copy the tree to this machine.
+` : ''
+
 // branch + per-run worktree path (no Date/random allowed in scripts; keep deterministic)
 const specName = String(spec).split('/').pop().replace(/\.md$/, '').replace(/[^a-zA-Z0-9._-]/g, '-')
 const branch = A.branch || `pnk-baton/${specName}`
 const branchSlug = branch.replace(/\//g, '-')
 const repoParent = repo.split('/').slice(0, -1).join('/') || '/'
-const workdir = `${repoParent}/.pnk-baton-worktrees/${branchSlug}`
+// Worktree location is overridable (`A.worktree`) — e.g. to place it where a remote
+// test container can see it (under the repo). Default: a sibling .pnk-baton-worktrees dir.
+const workdir = (A.worktree || `${repoParent}/.pnk-baton-worktrees/${branchSlug}`).replace(/\/+$/, '')
 
 // If the spec is a tracked file under the repo, its worktree copy is the one to document
 // (so the doc commit lands with the branch); otherwise it's an external file edited in place.
@@ -44,7 +62,7 @@ const specRel = spec.startsWith(repo + '/') ? spec.slice(repo.length + 1) : null
 const specInWorktree = specRel ? `${workdir}/${specRel}` : spec
 
 // Build agents work IN the isolated worktree; merge/cleanup act on the original repo.
-const fields = `Repository (your isolated worktree): ${workdir}\nBase branch: ${base}\nFeature branch: ${branch}\nSpec: ${spec}`
+const fields = `Repository (your isolated worktree): ${workdir}\nBase branch: ${base}\nFeature branch: ${branch}\nSpec: ${spec}${remoteNote}`
 
 // ---- schemas ---------------------------------------------------------------
 const SETUP = {
@@ -135,7 +153,7 @@ const MERGE = {
 // ---- Setup: isolated worktree ----------------------------------------------
 phase('Setup')
 const setup = await agent(
-  `You are the pnk-baton SETUP step. Create an isolated git worktree so this run cannot collide with other concurrent pnk-baton runs.\nOriginal repository: ${repo}\nBase branch: ${base}\nFeature branch: ${branch}\nWorktree path to create: ${workdir}\n\nSteps:\n1. If a worktree or directory already lingers at ${workdir} from a prior run, remove it first: \`git -C ${repo} worktree remove --force ${workdir}\` (ignore errors if absent), then \`rm -rf ${workdir}\` if the directory still exists, and \`git -C ${repo} worktree prune\`.\n2. Create the worktree on a fresh feature branch off ${base}: \`git -C ${repo} worktree add -B ${branch} ${workdir} ${base}\`.\n3. Verify \`git -C ${workdir} branch --show-current\` is ${branch} and the tree is clean.\nReport READY on success, or ERROR with the exact failure.`,
+  `You are the pnk-baton SETUP step. Create an isolated git worktree so this run cannot collide with other concurrent pnk-baton runs.${remoteNote}\nOriginal repository: ${repo}\nBase branch: ${base}\nFeature branch: ${branch}\nWorktree path to create: ${workdir}\n\nSteps:\n1. If a worktree or directory already lingers at ${workdir} from a prior run, remove it first: \`git -C ${repo} worktree remove --force ${workdir}\` (ignore errors if absent), then \`rm -rf ${workdir}\` if the directory still exists, and \`git -C ${repo} worktree prune\`.\n2. Create the worktree on a fresh feature branch off ${base}: \`git -C ${repo} worktree add -B ${branch} ${workdir} ${base}\`.\n3. Verify \`git -C ${workdir} branch --show-current\` is ${branch} and the tree is clean.\nReport READY on success, or ERROR with the exact failure.`,
   { agentType: 'pnk-baton-integrator', phase: 'Setup', label: 'setup:worktree', schema: SETUP },
 )
 if (setup.status !== 'READY') {
@@ -264,7 +282,7 @@ let merge = null
 if (shipped && wantMerge && validationOk) {
   phase('Merge')
   merge = await agent(
-    `You are performing the pnk-baton MERGE. All gates passed. Land ${branch} onto ${base} with a LOCAL fast-forward in the ORIGINAL repository, then clean up the per-run worktree. Do NOT push to any remote.\nOriginal repository: ${repo}\nBase branch: ${base}\nFeature branch: ${branch}\nPer-run worktree: ${workdir}\n\n1. In ${repo}, confirm ${base} is an ancestor of ${branch}: \`git -C ${repo} merge-base --is-ancestor ${base} ${branch}\`.\n2. If YES, fast-forward base to the branch tip:\n   - if ${base} is the checked-out branch of ${repo}: \`git -C ${repo} merge --ff-only ${branch}\`;\n   - if ${base} is checked out in another worktree: \`git -C ${repo} update-ref refs/heads/${base} ${branch}\`.\n   Report MERGED with the new ${base} commit sha.\n3. If ${base} is NOT an ancestor (it moved): do NOT force, report NOT_FF and stop.\n4. On MERGED only, remove the per-run worktree: \`git -C ${repo} worktree remove --force ${workdir} && git -C ${repo} worktree prune\`.\nNever push. Never --force a merge. Never rebase. Never modify code or tests.`,
+    `You are performing the pnk-baton MERGE. All gates passed. Land ${branch} onto ${base} with a LOCAL fast-forward in the ORIGINAL repository, then clean up the per-run worktree. Do NOT push to any remote.${remoteNote}\nOriginal repository: ${repo}\nBase branch: ${base}\nFeature branch: ${branch}\nPer-run worktree: ${workdir}\n\n1. In ${repo}, confirm ${base} is an ancestor of ${branch}: \`git -C ${repo} merge-base --is-ancestor ${base} ${branch}\`.\n2. If YES, fast-forward base to the branch tip:\n   - if ${base} is the checked-out branch of ${repo}: \`git -C ${repo} merge --ff-only ${branch}\`;\n   - if ${base} is checked out in another worktree: \`git -C ${repo} update-ref refs/heads/${base} ${branch}\`.\n   Report MERGED with the new ${base} commit sha.\n3. If ${base} is NOT an ancestor (it moved): do NOT force, report NOT_FF and stop.\n4. On MERGED only, remove the per-run worktree: \`git -C ${repo} worktree remove --force ${workdir} && git -C ${repo} worktree prune\`.\nNever push. Never --force a merge. Never rebase. Never modify code or tests.`,
     { agentType: 'pnk-baton-merger', phase: 'Merge', label: 'merge', schema: MERGE },
   )
   log(`Merge: ${merge.status}${merge.baseCommit ? ' @ ' + merge.baseCommit : ''}`)
