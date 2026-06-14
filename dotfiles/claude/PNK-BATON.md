@@ -22,10 +22,11 @@ workflow, and command.
 
 ## How it works
 
-`/pnk-baton <spec> [--validate] [--base <branch>]` invokes the `pnk-baton` workflow, which
-orchestrates the agents below as a single deterministic script. Each run gets its
-**own git worktree** (so several `/pnk-baton` runs are safe concurrently), and stage
-results live in script variables, never the main session context.
+`/pnk-baton <spec> [--validate] [--base <branch>] [--ssh <user@host>] [--worktree <path>]`
+invokes the `pnk-baton` workflow, which orchestrates the agents below as a single
+deterministic script. Each run gets its **own git worktree** (so several `/pnk-baton`
+runs are safe concurrently), and stage results live in script variables, never the main
+session context.
 
 ```
 setup (worktree) → planner → test-author (red) → builder (green) → integrate base → reviewer ×N (parallel)
@@ -43,6 +44,25 @@ setup (worktree) → planner → test-author (red) → builder (green) → integ
 | `pnk-baton-validator` *(optional)* | real-infra end-to-end judgment | no (read-only) |
 | `pnk-baton-documenter` | append an as-built / lessons section to the spec | spec/doc only |
 | `pnk-baton-merger` | fast-forward base to the branch (local only, never pushes) | base ref only |
+
+## Remote targets (`--ssh`)
+
+By default everything runs on the local machine. When the repo + its test harness live
+on another host, pass `--ssh <user@host>` (e.g. `--ssh wiley@wiley-pinkleberry`). Then
+**every stage operates on the repo on that host over ssh** — `repo`, `base`, `branch`,
+`spec`, and the worktree are all paths/refs ON the remote; nothing is copied locally.
+The workflow injects a "REMOTE TARGET" preamble into every agent prompt telling it to:
+run all git/file/test commands as `ssh <host> '…'` (quoting the whole command so
+pipes/`&&`/redirects run remotely), read remote files with `ssh <host> 'cat …'`, write by
+piping a local temp back (`ssh <host> 'cat > path' < /tmp/x`), and use `ssh <host> bash -lc`
+/ `bash -s` for any bash syntax (the remote login shell may be fish). The planner carries
+`Bash` specifically so it can `ssh`-read the remote tree (it stays read-only).
+
+Pair it with `--worktree <path>` when the remote test harness only sees a fixed location
+— e.g. a containerised test gate that mounts the repo: put the worktree **under** the repo
+(`--worktree <repo>/worktrees/pnk-baton-<slug>`) so the container sees it, and have the
+test-author's run command target that path. Without this, the worktree defaults to a
+sibling `.pnk-baton-worktrees/` dir the container can't see.
 
 ## Design principles
 
