@@ -83,6 +83,24 @@ if [ -d "$REPO/hooks" ]; then
   say "hooks/ installed"
 fi
 
+# skills/ (Claude Code Skills, e.g. secret-hygiene — each is a dir with SKILL.md +
+# optional references/ and scripts/, so copy the whole tree, not just top-level files)
+if [ -d "$REPO/skills" ]; then
+  mkdir -p "$DEST/skills"
+  for d in "$REPO"/skills/*/; do
+    [ -d "$d" ] || continue
+    name="$(basename "$d")"
+    backup_if_exists "$DEST/skills/$name"
+    rm -rf "$DEST/skills/$name"
+    cp -r "$d" "$DEST/skills/$name"
+    # make any bundled scripts executable
+    if [ -d "$DEST/skills/$name/scripts" ]; then
+      find "$DEST/skills/$name/scripts" -type f -exec chmod +x {} +
+    fi
+  done
+  say "skills/ installed"
+fi
+
 # local plugin (do-the-thing)
 backup_if_exists "$DEST/plugins/local/project-planning"
 mkdir -p "$DEST/plugins/local"
