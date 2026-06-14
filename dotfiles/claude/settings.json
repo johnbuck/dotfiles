@@ -149,5 +149,18 @@
     }
   },
   "alwaysThinkingEnabled": true,
-  "effortLevel": "high"
+  "effortLevel": "high",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__HOME__/.claude/hooks/secret-leak-guard.sh"
+          }
+        ]
+      }
+    ]
+  }
 }
