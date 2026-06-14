@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # secret-leak-guard — PreToolUse guard (Bash + Read) that hard-blocks the highest-
 # confidence "leak a secret value into context" commands. Companion to the
-# `secret-hygiene` skill: the skill teaches the discipline, this is the backstop.
+# `pnk-secret-hygiene` skill: the skill teaches the discipline, this is the backstop.
 #
 # Global install (recommended — never-leak is universal). In ~/.claude/settings.json:
 #   { "hooks": { "PreToolUse": [ { "matcher": "Bash|Read",

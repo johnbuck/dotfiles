@@ -52,7 +52,7 @@ for f in "$REPO"/agents/*.md; do
 done
 say "agents/ installed"
 
-# workflows/ (e.g. baton)
+# workflows/ (e.g. pnk-baton)
 if [ -d "$REPO/workflows" ]; then
   mkdir -p "$DEST/workflows"
   for f in "$REPO"/workflows/*; do
@@ -62,7 +62,7 @@ if [ -d "$REPO/workflows" ]; then
   say "workflows/ installed"
 fi
 
-# commands/ (slash commands, e.g. /baton)
+# commands/ (slash commands, e.g. /pnk-baton)
 if [ -d "$REPO/commands" ]; then
   mkdir -p "$DEST/commands"
   for f in "$REPO"/commands/*.md; do
@@ -72,7 +72,7 @@ if [ -d "$REPO/commands" ]; then
   say "commands/ installed"
 fi
 
-# hooks/ (Claude Code hooks, e.g. baton-guard.sh — opt-in per repo via settings.json)
+# hooks/ (Claude Code hooks, e.g. pnk-baton-guard.sh — opt-in per repo via settings.json)
 if [ -d "$REPO/hooks" ]; then
   mkdir -p "$DEST/hooks"
   for f in "$REPO"/hooks/*; do
@@ -83,7 +83,7 @@ if [ -d "$REPO/hooks" ]; then
   say "hooks/ installed"
 fi
 
-# skills/ (Claude Code Skills, e.g. secret-hygiene — each is a dir with SKILL.md +
+# skills/ (Claude Code Skills, e.g. pnk-secret-hygiene — each is a dir with SKILL.md +
 # optional references/ and scripts/, so copy the whole tree, not just top-level files)
 if [ -d "$REPO/skills" ]; then
   mkdir -p "$DEST/skills"
