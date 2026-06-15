@@ -83,11 +83,19 @@ before doing anything heavier.
   (or any ≥1) alongside your change.
 - Pause/unpause: `updateMonitor active:false` (with `retryInterval:60`) or `pauseMonitor`/`resumeMonitor`.
 
-## PUSH monitors — the MCP does NOT expose the push token
+## PUSH monitors — the MCP does NOT expose the push token (and may not even SET one)
 `createMonitor type:push` makes the monitor, but **`getMonitor` returns `pushToken: null` and
-`updateMonitor` has no `pushToken` field** — so you cannot build the push URL from the MCP. To wire it:
+`updateMonitor` has no `pushToken` field** — so you cannot build the push URL from the MCP. **Worse: an
+MCP-created push monitor can have a genuinely NULL `push_token` in the DB** (not just hidden) — so there's
+no URL to push to and the monitor stays permanently DOWN with "no heartbeat." Confirm with the DB:
+`select id, case when push_token is null then 'NULL' else 'len='||length(push_token) end from monitor where type='push';`
+(use **single quotes** for SQLite string literals — double quotes are identifiers and silently misbehave).
+If NULL, **set a 32-char token** (`update monitor set push_token='<openssl rand -hex 16>' where id=<id>;`).
+Kuma's `/api/push/:token` endpoint looks the token up **in the DB directly**, so a fresh push lands without
+a Kuma restart; the monitor's `interval` must be **≥ the push cadence** or it flips DOWN between pushes.
+To wire it:
 1. Get the push URL from the **Kuma UI** (the monitor's page shows `<KUMA_BASE>/api/push/<token>`), or
-   from the Kuma backend DB.
+   from the Kuma backend DB (the token is low-sensitivity but don't splash it to stdout — relay via stdin).
 2. A host timer hits `<url>?status=up&msg=OK` on a healthy probe; when the pings stop (down/leak), Kuma
    marks the monitor DOWN and alerts. (See the SearXNG mobile-egress monitor wiring in homelab-core
    `tools/searxng-proxy/systemd/searxng-egress-asn-check.service`.)
