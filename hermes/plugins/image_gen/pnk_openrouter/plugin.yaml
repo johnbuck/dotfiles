@@ -1,0 +1,5 @@
+name: pnk-openrouter
+version: 0.1.0
+description: "OpenRouter image generation backend (chat/completions + modalities). Saves to $HERMES_HOME/cache/images/."
+author: Pinkleberry
+kind: backend
