@@ -5,10 +5,12 @@ export const meta = {
   phases: [
     { title: 'Setup', detail: 'create an isolated per-run git worktree' },
     { title: 'Plan', detail: 'planner turns the spec into a testable design' },
+    { title: 'Align', detail: 'drift-checker: pre-build alignment vs North Star / principles / spec / roadmap' },
     { title: 'Test', detail: 'test-author writes failing tests (red)' },
     { title: 'Build', detail: 'builder makes tests pass (green); loops with review' },
     { title: 'Integrate', detail: 'merge latest base into the branch' },
     { title: 'Review', detail: 'independent reviewers, one per dimension, in parallel' },
+    { title: 'Accept', detail: 'drift-checker: post-build UAT of the diff vs roadmap / North Star' },
     { title: 'Validate', detail: 'optional real-infrastructure end-to-end check' },
     { title: 'Document', detail: 'record as-built + lessons into the spec' },
     { title: 'Merge', detail: 'fast-forward base to the branch (local, no push); clean up worktree' },
@@ -30,6 +32,14 @@ const dimensions = A.dimensions || ['correctness', 'security', 'performance/obse
 const validate = A.validate ?? false
 const wantMerge = A.merge ?? true
 const maxRetries = A.maxRetries ?? 2
+
+// Drift / alignment gate inputs. `requireRoadmap` makes a missing roadmap a hard halt
+// (default: warn-and-continue). `northStar` / `roadmap` are optional path overrides; when
+// absent the drift-checker auto-discovers them by convention.
+const requireRoadmap = A.requireRoadmap ?? false
+const northStarPath = (A.northStar || '').trim() || null
+const roadmapPath = (A.roadmap || '').trim() || null
+const driftNote = `Artifact locations:\n- North Star: ${northStarPath ? `use ${northStarPath}` : 'auto-discover (NORTH-STAR.md / VISION.md / a North Star section in AGENTS.md/CLAUDE.md/README)'}\n- Roadmap: ${roadmapPath ? `use ${roadmapPath}` : 'auto-discover (ROADMAP.md / backlog index / epics doc / spec frontmatter roadmap|epic field)'}\n- Always read the repo AGENTS.md/CLAUDE.md for the project's "how we do things" principles.\nRoadmap policy this run: ${requireRoadmap ? 'REQUIRED — a missing roadmap is a hard failure.' : 'a missing roadmap is reported but not blocking.'}`
 
 // Remote target (optional). When set (e.g. "user@host"), the repo,
 // worktree, every source/test file, git, and the test command live on that host —
@@ -130,6 +140,40 @@ const VALID = {
   },
   required: ['status', 'evidence'],
 }
+const DRIFT = {
+  type: 'object', additionalProperties: false,
+  properties: {
+    mode: { enum: ['pre-build', 'post-build'] },
+    status: { enum: ['ALIGNED', 'DRIFT', 'ROADMAP-MISSING'] },
+    northStarFound: { type: 'boolean' },
+    roadmapFound: { type: 'boolean' },
+    artifacts: {
+      type: 'object', additionalProperties: false,
+      properties: {
+        northStar: { type: ['string', 'null'] },
+        roadmap: { type: ['string', 'null'] },
+        principles: { type: ['string', 'null'] },
+      },
+    },
+    findings: {
+      type: 'array',
+      items: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          severity: { enum: ['Critical', 'High', 'Medium', 'Low', 'Optional'] },
+          axis: { enum: ['project-north-star', 'baton-principles', 'how-we-do-things', 'spec', 'roadmap'] },
+          problem: { type: 'string' },
+          evidence: { type: 'string' },
+          recommendation: { type: 'string' },
+        },
+        required: ['severity', 'axis', 'problem', 'evidence'],
+      },
+    },
+    roadmapAlignment: { type: 'string' },
+    summary: { type: 'string' },
+  },
+  required: ['mode', 'status', 'roadmapFound', 'findings', 'summary'],
+}
 const INTEG = {
   type: 'object', additionalProperties: false,
   properties: {
@@ -171,6 +215,36 @@ log(`Plan: ${plan.summary} (${plan.successCriteria.length} success criteria; val
 
 const wantValidate = validate || plan.validationNeeded
 
+// Format a drift verdict's findings for logs / feedback / the final report.
+const fmtDrift = (d) => (d.findings || [])
+  .map((f) => `- [${f.severity}/${f.axis}] ${f.problem}${f.evidence ? ` (${f.evidence})` : ''}${f.recommendation ? ` -> ${f.recommendation}` : ''}`)
+  .join('\n')
+
+// Threshold is enforced in CODE, not just the prompt: Critical/High/Medium block, and a
+// blocking-severity finding must carry concrete cited evidence (else it's vibes — ignore it).
+// A verdict drifts if the agent said DRIFT, OR any evidence-backed blocking finding exists.
+const blockingFindings = (d) => (d.findings || []).filter(
+  (f) => (f.severity === 'Critical' || f.severity === 'High' || f.severity === 'Medium') && f.evidence && String(f.evidence).trim(),
+)
+const isDrift = (d) => d.status === 'DRIFT' || blockingFindings(d).length > 0
+
+// ---- Align: pre-build drift gate (cheap; catch drift before any code) -------
+phase('Align')
+const align = await agent(
+  `You are the pnk-baton DRIFT-CHECKER in **pre-build** mode. No code exists yet — judge the SPEC and the PLANNER's design for alignment before any build tokens are spent.\n${fields}\n\n${driftNote}\n\nPlanner summary: ${plan.summary}\nPlanner approach:\n${plan.approach}\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}\n\nAudit alignment across project-north-star, baton-principles, how-we-do-things, spec, and roadmap. Locate the North Star and roadmap (report exactly what you found). Judge neutrally. DRIFT on genuine Critical/High/MEDIUM misalignment (scope creep, direction change, rule violation, off-roadmap work, any silent data loss / destructive action / skipped-staging risk) — but every blocking finding MUST cite concrete evidence (file/section + quoted intent) or be downgraded to Optional. ROADMAP-MISSING only when the absence of a roadmap is the sole blocking issue; otherwise ALIGNED. Do not over-block a correct, minimal, on-roadmap plan, and do not rubber-stamp drift.`,
+  { agentType: 'pnk-baton-drift-checker', phase: 'Align', label: 'align:pre-build', schema: DRIFT },
+)
+log(`Align: ${align.status} (northStar=${align.northStarFound}, roadmap=${align.roadmapFound}); ${blockingFindings(align).length} blocking / ${(align.findings || []).length} total finding(s)`)
+
+if (isDrift(align)) {
+  return { status: 'DRIFT-HALT', branch, base, worktree: workdir, when: 'pre-build', reason: 'Pre-build alignment drift — operator must reconcile scope/direction before building.', findings: fmtDrift(align), drift: align, plan }
+} else if (align.status === 'ROADMAP-MISSING') {
+  if (requireRoadmap) {
+    return { status: 'ROADMAP-MISSING', branch, base, worktree: workdir, when: 'pre-build', reason: 'No roadmap found and --require-roadmap is set. Create or point to a canonical roadmap, then re-run.', drift: align, plan }
+  }
+  log('Align: no roadmap found — WARNING (not blocking; pass --require-roadmap to enforce). Continuing.')
+}
+
 // ---- Test (red) ------------------------------------------------------------
 phase('Test')
 const tests = await agent(
@@ -188,7 +262,7 @@ for (let attempt = 0; attempt <= maxRetries; attempt++) {
   phase('Build')
   const build = await agent(
     `You are the pnk-baton BUILDER (the single writer).\n${fields}\n\nMake these tests pass with the minimum correct code. Run \`${tests.runCommand}\`. DO NOT modify any test file. Stay on ${branch} in this worktree. Commit on the feature branch: feat: ${specName}.\n\nPlan approach:\n${plan.approach}\n` +
-      (priorFindings ? `\nThe reviewers REJECTED the previous attempt. Address every Critical/High finding below, then re-run the tests:\n${priorFindings}` : ''),
+      (priorFindings ? `\nThe reviewers REJECTED the previous attempt. Address every Critical, High, and Medium finding below, then re-run the tests:\n${priorFindings}` : ''),
     { agentType: 'pnk-baton-builder', phase: 'Build', label: `build:attempt-${attempt + 1}`, schema: BUILD },
   )
   log(`Build attempt ${attempt + 1}: testsPass=${build.testsPass}${build.flagged?.length ? ` (flagged: ${build.flagged.join('; ')})` : ''}`)
@@ -227,7 +301,7 @@ for (let attempt = 0; attempt <= maxRetries; attempt++) {
 
   const good = reviews.filter(Boolean)
   const rejects = good.filter((r) => r.status === 'REJECT')
-  confirmed = good.flatMap((r) => (r.findings || []).filter((f) => f.severity === 'Critical' || f.severity === 'High'))
+  confirmed = good.flatMap((r) => (r.findings || []).filter((f) => f.severity === 'Critical' || f.severity === 'High' || f.severity === 'Medium'))
 
   if (rejects.length === 0) {
     log(`Review PASS on all ${good.length} dimension(s) at attempt ${attempt + 1}`)
@@ -242,6 +316,26 @@ for (let attempt = 0; attempt <= maxRetries; attempt++) {
 
   if (attempt === maxRetries) {
     return { status: 'BLOCKED', branch, base, worktree: workdir, reason: `Reviewers still rejecting after ${maxRetries + 1} build attempts`, outstanding: confirmed, plan }
+  }
+}
+
+// ---- Accept: post-build drift gate (UAT the finished diff before shipping) --
+let accept = null
+if (shipped) {
+  phase('Accept')
+  accept = await agent(
+    `You are the pnk-baton DRIFT-CHECKER in **post-build** mode. The work is built, tested, and the adversarial reviewers PASSED. Perform user-acceptance-style alignment validation on the ACTUAL diff before it ships.\n${fields}\n\n${driftNote}\n\nRead the branch's own change: \`git -C ${workdir} diff $(git -C ${workdir} merge-base ${base} HEAD)..HEAD\`. ${base} is integrated, so incoming ${base} commits/deletions are NOT this branch's change — never judge them.\n\nSpec being implemented: ${spec}\nPlanner summary: ${plan.summary}\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}\n\nConfirm the SHIPPED work still aligns: did it drift from the plan/spec during build? Does the completed change actually deliver a roadmap item (acceptance), or solve something adjacent? Did it silently lose data, take a destructive/irreversible action, or skip staging? Honor project-north-star, baton-principles, how-we-do-things, spec, roadmap. Judge neutrally. DRIFT on genuine Critical/High/MEDIUM misalignment, every blocking finding citing concrete evidence (or downgrade to Optional); ROADMAP-MISSING only when a missing roadmap is the sole blocking issue; otherwise ALIGNED. Do not over-block correct, minimal, on-roadmap work, and do not rubber-stamp drift.`,
+    { agentType: 'pnk-baton-drift-checker', phase: 'Accept', label: 'accept:post-build', schema: DRIFT },
+  )
+  log(`Accept: ${accept.status} (roadmap=${accept.roadmapFound}); ${blockingFindings(accept).length} blocking / ${(accept.findings || []).length} total finding(s)`)
+
+  if (isDrift(accept)) {
+    return { status: 'DRIFT-BLOCKED', branch, base, worktree: workdir, when: 'post-build', reason: 'Post-build acceptance drift — the shipped work diverges from spec/roadmap/North Star. Not merged; branch left for operator.', findings: fmtDrift(accept), drift: accept, plan }
+  } else if (accept.status === 'ROADMAP-MISSING') {
+    if (requireRoadmap) {
+      return { status: 'ROADMAP-MISSING', branch, base, worktree: workdir, when: 'post-build', reason: 'No roadmap found and --require-roadmap is set. Branch is built+reviewed but not merged; add a roadmap and re-run (it will re-integrate).', drift: accept, plan }
+    }
+    log('Accept: no roadmap found — WARNING (not blocking). Continuing to ship.')
   }
 }
 
@@ -300,6 +394,12 @@ return {
   plan,
   tests: { files: tests.testFiles, run: tests.runCommand },
   review: 'PASS (all dimensions)',
+  alignment: {
+    preBuild: align ? align.status : 'skipped',
+    postBuild: accept ? accept.status : 'skipped',
+    roadmapFound: accept ? accept.roadmapFound : align.roadmapFound,
+    roadmap: (accept || align).artifacts ? (accept || align).artifacts.roadmap : null,
+  },
   integrated: base,
   documented: documented ? documented.status : 'skipped',
   validation: validation ? validation.status : (wantValidate ? 'unavailable' : 'not-requested'),

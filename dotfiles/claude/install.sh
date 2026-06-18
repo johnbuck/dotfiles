@@ -101,12 +101,15 @@ if [ -d "$REPO/skills" ]; then
   say "skills/ installed"
 fi
 
-# local plugin (do-the-thing)
+# local plugin (pnk-plan: pnk-spec / pnk-roadmap / pnk-scaffold)
+# Retire the old do-the-thing plugin if a prior install left it behind.
 backup_if_exists "$DEST/plugins/local/project-planning"
-mkdir -p "$DEST/plugins/local"
 rm -rf "$DEST/plugins/local/project-planning"
-cp -r "$REPO/plugins/local/project-planning" "$DEST/plugins/local/project-planning"
-say "local do-the-thing plugin installed"
+backup_if_exists "$DEST/plugins/local/pnk-plan"
+mkdir -p "$DEST/plugins/local"
+rm -rf "$DEST/plugins/local/pnk-plan"
+cp -r "$REPO/plugins/local/pnk-plan" "$DEST/plugins/local/pnk-plan"
+say "local pnk-plan plugin installed"
 
 # plugin manifests (rendered) — reference state; backed up first
 mkdir -p "$DEST/plugins"
