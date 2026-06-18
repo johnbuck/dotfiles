@@ -28,13 +28,13 @@
         "lastUpdated": "2026-04-12T07:11:28.977Z"
       }
     ],
-    "do-the-thing@local-do-the-thing": [
+    "pnk-plan@local-pnk-plan": [
       {
         "scope": "user",
-        "installPath": "__HOME__/.claude/plugins/cache/local-do-the-thing/do-the-thing/0.1.0",
+        "installPath": "__HOME__/.claude/plugins/cache/local-pnk-plan/pnk-plan/0.1.0",
         "version": "0.1.0",
-        "installedAt": "2026-04-12T07:11:28.977Z",
-        "lastUpdated": "2026-04-12T07:11:28.977Z"
+        "installedAt": "2026-06-17T00:00:00.000Z",
+        "lastUpdated": "2026-06-17T00:00:00.000Z"
       }
     ]
   }

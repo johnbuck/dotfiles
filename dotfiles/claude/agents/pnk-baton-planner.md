@@ -23,6 +23,7 @@ You will be given, as plain text fields:
 - Trace every code path the change touches. Name the exact files and functions.
 - Define failure modes, data at risk, and rollback.
 - Define DONE as concrete, testable success criteria — each one must be checkable by a test or a command, not a vibe.
+- Tie the design to the criteria both ways: every part of the approach traces to a success criterion, and every success criterion is covered by some part of the approach. Drop approach steps that map to nothing (scope creep); flag any criterion the design doesn't cover.
 </process>
 
 <constraints>

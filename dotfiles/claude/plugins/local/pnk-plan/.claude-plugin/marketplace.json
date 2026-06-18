@@ -1,0 +1,14 @@
+{
+  "name": "local-pnk-plan",
+  "version": "0.1.0",
+  "plugins": [
+    {
+      "name": "pnk-plan",
+      "source": "./plugins/pnk-plan",
+      "description": "Interactive planning skills (spec, roadmap, scaffold) that feed the pnk-baton build pipeline"
+    }
+  ],
+  "owner": {
+    "name": "wiley"
+  }
+}
