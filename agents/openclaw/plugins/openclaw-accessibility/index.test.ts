@@ -198,18 +198,6 @@ test("createRunnerFromConfig selects a provider", async () => {
 });
 
 // ---------------------------------------------------------------------------
-// Criterion: agentcore-automation-url
-//   buildAutomationUrl produces the documented CDP automation URL. Pure, no AWS.
-
-test("buildAutomationUrl shape", async () => {
-  const { buildAutomationUrl } = await import("./lib/agentcore.ts");
-  assert.equal(
-    buildAutomationUrl("us-west-2", "aws.browser.v1", "sess-123"),
-    "https://bedrock-agentcore.us-west-2.amazonaws.com/browser-streams/aws.browser.v1/sessions/sess-123/automation",
-  );
-});
-
-// ---------------------------------------------------------------------------
 // Criterion: agentcore-fails-open
 //   The agentcore provider fails open (no AWS packages required) when its
 //   mandatory region config is missing — execute resolves { ok:false } and never

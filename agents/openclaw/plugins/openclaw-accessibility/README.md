@@ -54,14 +54,19 @@ are short-lived. With `browserProvider: "agentcore"` the plugin starts its own
 short-lived AgentCore browser session **per audit**, attaches over CDP, audits,
 then stops the session. Because credentials are minted and torn down per audit,
 the expiry problem does not apply (auditing is one-shot). IAM comes from the
-agent's ambient AWS credentials. Requires the AWS SDK packages (declared as
-`optionalDependencies`) on the host.
+agent's ambient AWS credentials. Requires the official `bedrock-agentcore` SDK
+(declared as an `optionalDependency`) on the host.
 
-> Status: the `agentcore` provider's session lifecycle is a first cut written
-> from AWS's documented CDP automation URL + SigV4 signing. The exact
-> `StartBrowserSession`/`StopBrowserSession` fields are marked `VERIFY` in
-> `lib/agentcore.ts` and should be validated against a live AgentCore setup
-> before production use. The `cdp` provider and the local default are unchanged.
+It uses that SDK's `Browser` client, whose `generateWebSocketUrl()` returns the
+CDP automation URL plus SigV4 headers (the TypeScript equivalent of the Python
+`generate_ws_headers()`), so there is no manual signing. The lifecycle —
+`startSession` -> `generateWebSocketUrl` -> `connectOverCDP(url, { headers })` ->
+`stopSession` — mirrors the production `browser-mcp` pattern.
+
+> Status: the SDK calls match the documented `bedrock-agentcore` TypeScript API,
+> but the end-to-end `agentcore` path has not yet been run against live AWS — it
+> awaits validation on a real AgentCore setup. The `cdp` provider and the local
+> default are unchanged and fully tested.
 
 ## Tests
 

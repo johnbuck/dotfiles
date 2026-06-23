@@ -6,33 +6,26 @@
 // session, the SigV4-expiry problem that bites long-lived static config does not
 // apply — auditing is one-shot.
 //
-// Everything AWS is dynamic-import()ed inside startAgentCoreSession so the cdp
-// provider (and the test suite) never load AWS packages. They are declared in
-// package.json optionalDependencies; an AgentCore deployment installs them. The
-// top of this file imports only from ./audit.ts (no third-party), so the pure
-// buildAutomationUrl helper is unit-testable with nothing installed.
+// Uses the official `bedrock-agentcore` TypeScript SDK Browser client. Its
+// generateWebSocketUrl() returns { url, headers } — the CDP automation wss URL
+// plus the SigV4 auth headers — exactly like the Python
+// BrowserClient.generate_ws_headers() the production browser-mcp uses. So there
+// is no manual SigV4 and no control-plane field-name risk; the SDK tracks both.
 //
-// VERIFY-AGAINST-LIVE: the StartBrowserSession / StopBrowserSession field names
-// and the presign-vs-headers choice are written from AWS's documented CDP
-// automation URL format. Confirm against the Prodigy browser-mcp BrowserClient
-// snippet before production use — the lifecycle structure is the stable part.
+// Lifecycle mirrors the production browser-mcp:
+//   new Browser({region, identifier}) -> startSession({timeout, viewport})
+//   -> generateWebSocketUrl() -> connectOverCDP(url, {headers}) -> audit
+//   -> browser.close() -> stopSession()
+//
+// AWS imports are dynamic so the cdp provider and the test suite load nothing.
+// `bedrock-agentcore` is declared in package.json optionalDependencies. IAM auth
+// is ambient (the agent's role / Principal ARN) via the SDK's default credential
+// provider chain — nothing is passed in plugin config.
 
 import type { AgentCoreConfig, BrowserSession, RunnerContext } from "./audit.ts";
 import { toErrorResult } from "./audit.ts";
 
-const DEFAULT_IDENTIFIER = "aws.browser.v1";
-const DEFAULT_SESSION_TIMEOUT_SECONDS = 300;
-const SIGV4_SERVICE = "bedrock-agentcore";
-
-// buildAutomationUrl — the CDP automation WebSocket URL for a session. Pure +
-// exported for unit tests. Format per AWS docs:
-//   https://bedrock-agentcore.<region>.amazonaws.com/browser-streams/<browserId>/sessions/<sessionId>/automation
-export function buildAutomationUrl(region: string, browserId: string, sessionId: string): string {
-  return (
-    `https://bedrock-agentcore.${region}.amazonaws.com` +
-    `/browser-streams/${browserId}/sessions/${sessionId}/automation`
-  );
-}
+const DEFAULT_SESSION_TIMEOUT_SECONDS = 3600;
 
 export async function startAgentCoreSession(
   config: { agentcore?: AgentCoreConfig; connectTimeoutMs?: number },
@@ -46,76 +39,48 @@ export async function startAgentCoreSession(
       target: ctx.target,
     });
   }
-  const region = ac.region;
-  const identifier = ac.identifier ?? DEFAULT_IDENTIFIER;
-  const sessionTimeoutSeconds = ac.sessionTimeoutSeconds ?? DEFAULT_SESSION_TIMEOUT_SECONDS;
 
-  // Lazy AWS imports — only loaded for the agentcore provider.
-  let AgentCore: any, SignatureV4: any, Sha256: any, defaultProvider: any, chromium: any;
+  // Lazy imports — only loaded for the agentcore provider.
+  let Browser: any;
+  let chromium: any;
   try {
     ({ chromium } = (await import("playwright-core")) as any);
-    AgentCore = await import("@aws-sdk/client-bedrock-agentcore");
-    ({ SignatureV4 } = (await import("@aws-sdk/signature-v4")) as any);
-    ({ Sha256 } = (await import("@aws-crypto/sha256-js")) as any);
-    ({ defaultProvider } = (await import("@aws-sdk/credential-provider-node")) as any);
+    ({ Browser } = (await import("bedrock-agentcore/browser")) as any);
   } catch (err) {
     throw toErrorResult(
       new Error(
-        "agentcore provider needs AWS deps installed: @aws-sdk/client-bedrock-agentcore, " +
-          "@aws-sdk/signature-v4, @aws-crypto/sha256-js, @aws-sdk/credential-provider-node " +
+        "agentcore provider needs `bedrock-agentcore` and `playwright-core` installed " +
           `(${err instanceof Error ? err.message : String(err)})`,
       ),
       { code: "browser_unavailable", standard: ctx.standard, target: ctx.target },
     );
   }
 
-  const client = new AgentCore.BedrockAgentCoreClient({ region });
+  // identifier omitted -> SDK default 'aws.browser.v1'. Credentials are ambient.
+  const client = new Browser({
+    region: ac.region,
+    ...(ac.identifier ? { identifier: ac.identifier } : {}),
+  });
 
-  // 1. Start a session.  VERIFY field names against the live SDK / your snippet.
-  let sessionId: string;
-  let browserId: string;
+  // 1. Start a session.
   try {
-    const res = await client.send(
-      new AgentCore.StartBrowserSessionCommand({
-        browserIdentifier: identifier,
-        sessionTimeoutSeconds,
-      }),
-    );
-    sessionId = res.sessionId;
-    browserId = res.browserIdentifier ?? identifier;
-  } catch (err) {
-    throw toErrorResult(err, { code: "browser_unavailable", standard: ctx.standard, target: ctx.target });
-  }
-
-  // 2. SigV4-presign the CDP automation URL with the agent's ambient credentials.
-  let presignedUrl: string;
-  try {
-    const u = new URL(buildAutomationUrl(region, browserId, sessionId));
-    const signer = new SignatureV4({
-      service: SIGV4_SERVICE,
-      region,
-      credentials: defaultProvider(),
-      sha256: Sha256,
+    await client.startSession({
+      timeout: ac.sessionTimeoutSeconds ?? DEFAULT_SESSION_TIMEOUT_SECONDS,
+      ...(ac.viewport ? { viewport: ac.viewport } : {}),
     });
-    const signed = await signer.presign(
-      { method: "GET", protocol: u.protocol, hostname: u.hostname, path: u.pathname, headers: { host: u.hostname } },
-      { expiresIn: 300 },
-    );
-    const qs = new URLSearchParams(signed.query as Record<string, string>).toString();
-    presignedUrl = `wss://${u.hostname}${u.pathname}?${qs}`;
   } catch (err) {
-    await stopSession(client, AgentCore, browserId, sessionId);
     throw toErrorResult(err, { code: "browser_unavailable", standard: ctx.standard, target: ctx.target });
   }
 
-  // 3. Connect Playwright to the presigned CDP socket.
+  // 2. Get the CDP automation URL + signed headers, then connect Playwright.
   let browser: any;
   try {
-    const opts: any = {};
+    const { url, headers } = await client.generateWebSocketUrl();
+    const opts: any = { headers };
     if (config.connectTimeoutMs && config.connectTimeoutMs > 0) opts.timeout = config.connectTimeoutMs;
-    browser = await chromium.connectOverCDP(presignedUrl, opts);
+    browser = await chromium.connectOverCDP(url, opts);
   } catch (err) {
-    await stopSession(client, AgentCore, browserId, sessionId);
+    await stopSession(client);
     throw toErrorResult(err, { code: "browser_unavailable", standard: ctx.standard, target: ctx.target });
   }
 
@@ -127,15 +92,17 @@ export async function startAgentCoreSession(
       } catch {
         /* best effort */
       }
-      await stopSession(client, AgentCore, browserId, sessionId);
+      await stopSession(client);
     },
   };
 }
 
-async function stopSession(client: any, AgentCore: any, browserId: string, sessionId: string): Promise<void> {
+// stopSession releases the AgentCore session — must not be skipped. Best-effort:
+// the session TTL reaps it if this fails.
+async function stopSession(client: any): Promise<void> {
   try {
-    await client.send(new AgentCore.StopBrowserSessionCommand({ browserIdentifier: browserId, sessionId }));
+    await client.stopSession();
   } catch {
-    /* best effort — the session TTL reaps it anyway */
+    /* best effort */
   }
 }
