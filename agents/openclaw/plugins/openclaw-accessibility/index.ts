@@ -1,6 +1,6 @@
 // openclaw-accessibility
 //
-// Native OpenClaw plugin that registers the `a11y_audit` tool: it runs
+// OpenClaw plugin that registers the `a11y_audit` tool: it runs
 // axe-core against a web page (or a raw HTML string) over a CDP-reachable
 // Chromium and returns structured WCAG findings. The browser may be local
 // or remote/managed (e.g. AWS Bedrock AgentCore Browser) — the endpoint and
