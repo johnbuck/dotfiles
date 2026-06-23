@@ -1,7 +1,7 @@
 # mcp-servers
 
 Reference for the MCP servers used across my Claude Code / OpenCode setups. Client wiring lives
-in `dotfiles/claude/.mcp.json.example` and `dotfiles/opencode/opencode.json`; this doc covers the
+in `claude/.mcp.json.example` and `opencode/opencode.json`; this doc covers the
 **servers** themselves.
 
 ## Custom servers (my own code — separate repos)
@@ -25,7 +25,7 @@ These are upstream npm packages, each run as a stdio server and exposed over HTT
 ## Stdio servers (run directly — no wrapper, no port)
 
 The client launches these as a local stdio subprocess; there's no Docker image or supergateway
-port. Wiring is the matching `stdio` entry in `dotfiles/claude/.mcp.json.example`.
+port. Wiring is the matching `stdio` entry in `claude/.mcp.json.example`.
 
 | Server | npm package | Notes |
 |--------|-------------|-------|
