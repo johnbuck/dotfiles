@@ -15,10 +15,12 @@
 // Intra-repo import carries an explicit `.ts` extension (Node 26 strips
 // types but does not rewrite extensions).
 
-import { execute, createCdpRunner } from "./lib/audit.ts";
+import { execute, createRunnerFromConfig } from "./lib/audit.ts";
 
 const DEFAULTS = {
+  browserProvider: "cdp",
   cdpEndpoint: "http://127.0.0.1:9222",
+  waitUntil: "load",
   defaultStandard: "WCAG2.1AA",
   timeoutMs: 30000,
   connectTimeoutMs: 30000,
@@ -33,11 +35,42 @@ export default {
     type: "object",
     additionalProperties: false,
     properties: {
+      browserProvider: {
+        type: "string",
+        enum: ["cdp", "agentcore"],
+        default: DEFAULTS.browserProvider,
+        description:
+          "How the browser is supplied. 'cdp' (default) attaches to a standing endpoint (cdpEndpoint/cdpHeaders). 'agentcore' starts a short-lived AWS Bedrock AgentCore browser session per audit and tears it down after.",
+      },
+      waitUntil: {
+        type: "string",
+        enum: ["load", "domcontentloaded", "networkidle", "commit"],
+        default: DEFAULTS.waitUntil,
+        description:
+          "Page navigation wait condition. Default 'load'. For SPA / managed browsers, 'networkidle' or 'domcontentloaded' avoids auditing a half-rendered page.",
+      },
+      agentcore: {
+        type: "object",
+        additionalProperties: false,
+        description:
+          "Config for browserProvider: 'agentcore'. IAM auth comes from the agent's ambient AWS credentials — no keys here.",
+        properties: {
+          region: { type: "string", description: "AWS region of the AgentCore browser." },
+          identifier: {
+            type: "string",
+            description: "Browser tool identifier to start a session against. Defaults to aws.browser.v1.",
+          },
+          sessionTimeoutSeconds: {
+            type: "number",
+            description: "Upper-bound TTL for the per-audit session (started and stopped each audit).",
+          },
+        },
+      },
       cdpEndpoint: {
         type: "string",
         default: DEFAULTS.cdpEndpoint,
         description:
-          "CDP endpoint to attach to. http(s):// for a local browser, or ws(s):// for a remote/managed browser (e.g. AWS Bedrock AgentCore Browser). Set per agent at deploy.",
+          "CDP endpoint to attach to when browserProvider is 'cdp'. http(s):// for a local browser, or ws(s):// for a remote/managed browser. Set per agent at deploy.",
       },
       cdpHeaders: {
         type: "object",
@@ -66,13 +99,23 @@ export default {
 
   register(api: any) {
     const cfg = api?.pluginConfig ?? {};
+    const browserProvider = cfg.browserProvider ?? DEFAULTS.browserProvider;
     const cdpEndpoint = cfg.cdpEndpoint ?? DEFAULTS.cdpEndpoint;
     const cdpHeaders = cfg.cdpHeaders ?? undefined;
     const connectTimeoutMs = cfg.connectTimeoutMs ?? DEFAULTS.connectTimeoutMs;
+    const waitUntil = cfg.waitUntil ?? DEFAULTS.waitUntil;
+    const agentcore = cfg.agentcore ?? undefined;
     const defaultStandard = cfg.defaultStandard ?? DEFAULTS.defaultStandard;
     const timeoutMs = cfg.timeoutMs ?? DEFAULTS.timeoutMs;
 
-    const runner = createCdpRunner({ cdpEndpoint, cdpHeaders, connectTimeoutMs });
+    const runner = createRunnerFromConfig({
+      browserProvider,
+      cdpEndpoint,
+      cdpHeaders,
+      connectTimeoutMs,
+      waitUntil,
+      agentcore,
+    });
 
     api.registerTool({
       name: "a11y_audit",
@@ -122,7 +165,9 @@ export default {
     });
 
     api?.logger?.info?.(
-      `openclaw-accessibility: registered a11y_audit (cdp=${cdpEndpoint}, default=${defaultStandard})`,
+      `openclaw-accessibility: registered a11y_audit (provider=${browserProvider}, ` +
+        `${browserProvider === "agentcore" ? `region=${agentcore?.region}` : `cdp=${cdpEndpoint}`}, ` +
+        `waitUntil=${waitUntil}, default=${defaultStandard})`,
     );
   },
 };
