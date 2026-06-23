@@ -199,3 +199,57 @@ This is an in-process tool, not a long-running service, so there is no Uptime Ku
 ## Open questions
 
 - `[@humanUser]` The default `cdpEndpoint` (`http://127.0.0.1:9222`) is a placeholder for the build. The real endpoint of Juliet's managed Chromium is a deploy-time value set in plugin config; confirm it when installing (non-blocking for this spec — the build and tests do not need it).
+
+---
+
+## Implementation log / as-built
+
+**Branch:** `pnk-baton/openclaw-accessibility-native-plugin` · **Status:** built, tested green (9/9), reviewed.
+**Commits:** `d3d1fe0` test (red) → `0dc696c` feat. Documentation commit added on top.
+
+### What actually shipped
+
+15 new files, +4534 lines, all under `agents/openclaw/plugins/openclaw-accessibility/` (plus this spec in `backlog/`). No existing file was modified — sibling plugins (`pipeline-guard`, `sessions-worktree-injector`) untouched, as required by the surgical-scope constraint.
+
+| File | Essence |
+|------|---------|
+| `index.ts` (111) | Default-export object with `setup(api)`; registers exactly one tool `a11y_audit`. Thin wiring over `lib/audit.ts`. `parameters` is a **plain JSON-Schema object literal**, not TypeBox. Two-layer fail-open: `execute()` already fails open, and the hook body wraps it in a try/catch returning `{ ok:false, error:"audit_failed" }` so it can never throw. Reads config from `api.pluginConfig` with hard-coded `DEFAULTS` fallback. |
+| `lib/audit.ts` (321) | All logic, browser-free + fully exported: `validateInput` (url-XOR-html), `buildAxeOptions` (standard→axe tags, cumulative sets), `shapeResult`, `toErrorResult`, `createCdpRunner` (dynamic `import("playwright-core")`/`import("axe-core")` inside the body), `execute` (orchestrator with `withTimeout`, always resolves). |
+| `index.test.ts` (313) | `node:test` suite, one test per acceptance criterion, fake `api` + fake runner. |
+| `openclaw.plugin.json` (28) | Native manifest: `id`, `name`, `description`, `configSchema`, `"skills": ["./skills"]`. |
+| `package.json` (15) | `type:module`, `openclaw.extensions:["./index.ts"]`, `axe-core ^4.10.2` + `playwright-core ^1.49.1` runtime deps, `scripts.test: "node --test"`. |
+| `tsconfig.json` (15) | NodeNext ESM, editor/optional typecheck only. |
+| `skills/accessibility/SKILL.md` + 6 `references/*.md` | Ported guidance; single-line frontmatter; body points at `a11y_audit` and the `a11y-auditor` skill. |
+| `skills/a11y-auditor/SKILL.md` | Ported from the Claude `agents/a11y-auditor.md` subagent; Claude-only `model:`/`tools:` frontmatter dropped; single-line frontmatter; drives `a11y_audit` and produces a prioritized report. |
+| `README.md` (54) | What it is, the tool, the two skills, install pointer only. |
+
+### Key decisions / deviations from plan
+
+- **No deviation from acceptance criteria** — all 10 criteria implemented as written. The two deliberate plan-honored choices that differ from the spec's *prose*: (a) `parameters` is a plain JSON-Schema literal, **not** TypeBox `Type.Object(...)` (the spec's Technical-approach text says TypeBox, but the zero-third-party-dependency test constraint wins; see Q2); (b) entry stays `setup(api)`+`api.registerTool` exactly as the criteria hard-code, with wiring kept thin so a rename to `register(api)` is a one-line change (see Q1).
+- **Cumulative WCAG tag sets:** `WCAG2.1AAA` resolves to `["wcag2a","wcag2aa","wcag21a","wcag21aa","wcag2aaa","wcag21aaa"]` (includes lower levels), matching axe-core convention. The `defaults-standard-wcag21aa` and `maps-standard-to-axe-tags` tests assert these exact sets.
+- **Structured-error propagation through the seam:** `createCdpRunner` throws `toErrorResult(...)` objects (already `{ ok:false }`); `execute` detects an already-structured error and surfaces it verbatim, else wraps as `audit_failed`/`timeout`. Net effect: a single fail-open contract regardless of where the failure originates.
+
+### Resolution of planner open questions
+
+1. **ENTRY-SHAPE (`setup` vs `register`):** Kept `setup(api)` + `api.registerTool` as the criteria hard-code. Unit test `setup registers tool` passes against a fake `api`. The live-SDK shape is **unverified** (requires the running OpenClaw SDK, out of scope). Mitigation as planned: wiring in `setup()` is thin — if the deploy SDK calls `register` not `setup`, it is a one-line rename. **Deploy-time risk remains open.**
+2. **TypeBox vs zero-dep:** Resolved in favour of zero-dep. `parameters`/`configSchema` are plain JSON-Schema object literals; the module loads with **no third-party packages installed**, which is what makes `node --test` dependency-free. If the real SDK strictly demands a TypeBox instance, that conversion happens at the deploy boundary (out of scope). **Confirm at install.**
+3. **skill-scanner invocation:** Confirmed the criterion's literal command `skill-scanner scan .../skills` **does not work** — `scan` targets a single package and errors `SKILL.md not found` on the parent dir holding two skill packages. The working invocation is **`skill-scanner scan-all .../skills`** → `Skills Scanned: 2, Safe Skills: 2`, max severity **INFO** (1 info finding each), i.e. `[OK]` SAFE. Per-skill `skill-scanner scan .../skills/accessibility` also works. The skills are SAFE; the criterion's command string is the only thing that needed correcting.
+4. **tsc unavailable:** Confirmed `tsc not found` in this environment; the tsconfig typecheck is editor/optional and is **not** a hard gate. `node --test` is the real gate and is green.
+5. **cdpEndpoint default:** Left at the `http://127.0.0.1:9222` build placeholder; real Juliet Chromium endpoint is a deploy-time config value (the `[@humanUser]` open question above). Non-blocking for build/tests.
+
+### Lessons / gotchas for a future maintainer
+
+- **Run the tests from the plugin dir:** `cd agents/openclaw/plugins/openclaw-accessibility && node --test`. Requires Node ≥ 22.6 for native TS type-stripping (build host is Node 26).
+- **Intra-repo imports carry an explicit `.ts` extension** (`./lib/audit.ts`) — Node strips types but does not rewrite extensions; dropping the extension breaks module resolution.
+- **Never add a top-level `import` of `playwright-core`/`axe-core`** to `index.ts` or `lib/audit.ts` — that would make `node --test` require installed packages and break the dependency-free gate. They are imported lazily inside `createCdpRunner` only.
+- **skill-scanner: use `scan-all` for this dir, not `scan`** (two packages under one parent).
+- The CDP runner, timeout path, and real-browser end-to-end are **not** exercised by the suite (runner is mocked) — they are validated manually at deploy.
+
+### How to verify
+
+```
+cd agents/openclaw/plugins/openclaw-accessibility
+node --test                 # expect: 9 pass, 0 fail
+skill-scanner scan-all skills   # expect: Skills Scanned 2, Safe 2, max severity INFO ([OK] SAFE)
+```
+"Good" = all 9 `node:test` cases pass and the scanner reports both skills SAFE. Typecheck (`tsc --noEmit`) is optional and unavailable here. Live-SDK load (`openclaw plugins inspect openclaw-accessibility` → `Format: native` with `a11y_audit`) is a deploy-time check, out of scope for this branch.
