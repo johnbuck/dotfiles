@@ -33,6 +33,17 @@ const validate = A.validate ?? false
 const wantMerge = A.merge ?? true
 const maxRetries = A.maxRetries ?? 2
 
+// Target environment — REQUIRED, no default (every run must declare staging|prod).
+// Drives: which infra the validator/builder exercise, whether validation is mandatory
+// (prod => always, and must PASS to ship), and a signal the drift-checker enforces
+// (a prod target with no staging precedent is drift).
+const env = String(A.env || A.environment || '').trim().toLowerCase()
+if (env !== 'staging' && env !== 'prod') {
+  throw new Error("pnk-baton requires args.env = 'staging' or 'prod' (no default — every run must declare its target environment)")
+}
+const isProd = env === 'prod'
+const envNote = `\n\n=== TARGET ENVIRONMENT: ${env.toUpperCase()} ===\nThis run targets the ${env} environment. Exercise EVERY infrastructure- or data-touching test and validation against the ${env} target. NEVER read or mutate production data/infrastructure unless the target is explicitly prod.${isProd ? '\nThis is a PRODUCTION-targeted run: real-infrastructure validation is MANDATORY (it cannot be skipped or SKIPPED-away), and a change reaching prod with no prior staging pass is DRIFT — confirm a staging precedent exists before accepting.' : ''}`
+
 // Drift / alignment gate inputs. `requireRoadmap` makes a missing roadmap a hard halt
 // (default: warn-and-continue). `northStar` / `roadmap` are optional path overrides; when
 // absent the drift-checker auto-discovers them by convention.
@@ -72,7 +83,7 @@ const specRel = spec.startsWith(repo + '/') ? spec.slice(repo.length + 1) : null
 const specInWorktree = specRel ? `${workdir}/${specRel}` : spec
 
 // Build agents work IN the isolated worktree; merge/cleanup act on the original repo.
-const fields = `Repository (your isolated worktree): ${workdir}\nBase branch: ${base}\nFeature branch: ${branch}\nSpec: ${spec}${remoteNote}`
+const fields = `Repository (your isolated worktree): ${workdir}\nBase branch: ${base}\nFeature branch: ${branch}\nSpec: ${spec}\nTarget environment: ${env.toUpperCase()}${remoteNote}`
 
 // ---- schemas ---------------------------------------------------------------
 const SETUP = {
@@ -212,8 +223,11 @@ const plan = await agent(
   { agentType: 'pnk-baton-planner', phase: 'Plan', schema: PLAN },
 )
 log(`Plan: ${plan.summary} (${plan.successCriteria.length} success criteria; validationNeeded=${plan.validationNeeded})`)
+log(`Target environment: ${env.toUpperCase()}${isProd ? ' — production: real-infra validation MANDATORY and must PASS to ship' : ''}`)
 
-const wantValidate = validate || plan.validationNeeded
+// Prod targets ALWAYS validate (and must PASS — see validationOk below); staging keeps
+// the validator optional (run if requested or the planner deems it needed).
+const wantValidate = isProd || validate || plan.validationNeeded
 
 // Format a drift verdict's findings for logs / feedback / the final report.
 const fmtDrift = (d) => (d.findings || [])
@@ -231,7 +245,7 @@ const isDrift = (d) => d.status === 'DRIFT' || blockingFindings(d).length > 0
 // ---- Align: pre-build drift gate (cheap; catch drift before any code) -------
 phase('Align')
 const align = await agent(
-  `You are the pnk-baton DRIFT-CHECKER in **pre-build** mode. No code exists yet — judge the SPEC and the PLANNER's design for alignment before any build tokens are spent.\n${fields}\n\n${driftNote}\n\nPlanner summary: ${plan.summary}\nPlanner approach:\n${plan.approach}\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}\n\nAudit alignment across project-north-star, baton-principles, how-we-do-things, spec, and roadmap. Locate the North Star and roadmap (report exactly what you found). Judge neutrally. DRIFT on genuine Critical/High/MEDIUM misalignment (scope creep, direction change, rule violation, off-roadmap work, any silent data loss / destructive action / skipped-staging risk) — but every blocking finding MUST cite concrete evidence (file/section + quoted intent) or be downgraded to Optional. ROADMAP-MISSING only when the absence of a roadmap is the sole blocking issue; otherwise ALIGNED. Do not over-block a correct, minimal, on-roadmap plan, and do not rubber-stamp drift.`,
+  `You are the pnk-baton DRIFT-CHECKER in **pre-build** mode. No code exists yet — judge the SPEC and the PLANNER's design for alignment before any build tokens are spent.\n${fields}\n\n${driftNote}${envNote}\n\nPlanner summary: ${plan.summary}\nPlanner approach:\n${plan.approach}\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}\n\nAudit alignment across project-north-star, baton-principles, how-we-do-things, spec, and roadmap. Locate the North Star and roadmap (report exactly what you found). Judge neutrally. DRIFT on genuine Critical/High/MEDIUM misalignment (scope creep, direction change, rule violation, off-roadmap work, any silent data loss / destructive action / skipped-staging risk) — but every blocking finding MUST cite concrete evidence (file/section + quoted intent) or be downgraded to Optional. ROADMAP-MISSING only when the absence of a roadmap is the sole blocking issue; otherwise ALIGNED. Do not over-block a correct, minimal, on-roadmap plan, and do not rubber-stamp drift.`,
   { agentType: 'pnk-baton-drift-checker', phase: 'Align', label: 'align:pre-build', schema: DRIFT },
 )
 log(`Align: ${align.status} (northStar=${align.northStarFound}, roadmap=${align.roadmapFound}); ${blockingFindings(align).length} blocking / ${(align.findings || []).length} total finding(s)`)
@@ -324,7 +338,7 @@ let accept = null
 if (shipped) {
   phase('Accept')
   accept = await agent(
-    `You are the pnk-baton DRIFT-CHECKER in **post-build** mode. The work is built, tested, and the adversarial reviewers PASSED. Perform user-acceptance-style alignment validation on the ACTUAL diff before it ships.\n${fields}\n\n${driftNote}\n\nRead the branch's own change: \`git -C ${workdir} diff $(git -C ${workdir} merge-base ${base} HEAD)..HEAD\`. ${base} is integrated, so incoming ${base} commits/deletions are NOT this branch's change — never judge them.\n\nSpec being implemented: ${spec}\nPlanner summary: ${plan.summary}\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}\n\nConfirm the SHIPPED work still aligns: did it drift from the plan/spec during build? Does the completed change actually deliver a roadmap item (acceptance), or solve something adjacent? Did it silently lose data, take a destructive/irreversible action, or skip staging? Honor project-north-star, baton-principles, how-we-do-things, spec, roadmap. Judge neutrally. DRIFT on genuine Critical/High/MEDIUM misalignment, every blocking finding citing concrete evidence (or downgrade to Optional); ROADMAP-MISSING only when a missing roadmap is the sole blocking issue; otherwise ALIGNED. Do not over-block correct, minimal, on-roadmap work, and do not rubber-stamp drift.`,
+    `You are the pnk-baton DRIFT-CHECKER in **post-build** mode. The work is built, tested, and the adversarial reviewers PASSED. Perform user-acceptance-style alignment validation on the ACTUAL diff before it ships.\n${fields}\n\n${driftNote}${envNote}\n\nRead the branch's own change: \`git -C ${workdir} diff $(git -C ${workdir} merge-base ${base} HEAD)..HEAD\`. ${base} is integrated, so incoming ${base} commits/deletions are NOT this branch's change — never judge them.\n\nSpec being implemented: ${spec}\nPlanner summary: ${plan.summary}\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}\n\nConfirm the SHIPPED work still aligns: did it drift from the plan/spec during build? Does the completed change actually deliver a roadmap item (acceptance), or solve something adjacent? Did it silently lose data, take a destructive/irreversible action, or skip staging? Honor project-north-star, baton-principles, how-we-do-things, spec, roadmap. Judge neutrally. DRIFT on genuine Critical/High/MEDIUM misalignment, every blocking finding citing concrete evidence (or downgrade to Optional); ROADMAP-MISSING only when a missing roadmap is the sole blocking issue; otherwise ALIGNED. Do not over-block correct, minimal, on-roadmap work, and do not rubber-stamp drift.`,
     { agentType: 'pnk-baton-drift-checker', phase: 'Accept', label: 'accept:post-build', schema: DRIFT },
   )
   log(`Accept: ${accept.status} (roadmap=${accept.roadmapFound}); ${blockingFindings(accept).length} blocking / ${(accept.findings || []).length} total finding(s)`)
@@ -344,7 +358,7 @@ let validation = null
 if (shipped && wantValidate) {
   phase('Validate')
   validation = await agent(
-    `You are the pnk-baton VALIDATOR (pre-merge pass).\n${fields}\n\nRun the feature end-to-end against real infrastructure on ${branch}. Judge output against the success criteria — wrong data with exit 0 is a FAIL. If the infrastructure is genuinely unavailable, report SKIPPED with the reason; do not fake a pass.\n\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}`,
+    `You are the pnk-baton VALIDATOR (pre-merge pass).\n${fields}${envNote}\n\nRun the feature end-to-end against the ${env} infrastructure on ${branch}. Judge output against the success criteria — wrong data with exit 0 is a FAIL.${isProd ? ' This is a PRODUCTION-targeted run: validation is MANDATORY — SKIPPED is NOT acceptable (a SKIP blocks the ship). Only PASS clears it.' : ' If the infrastructure is genuinely unavailable, report SKIPPED with the reason; do not fake a pass.'}\n\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}`,
     { agentType: 'pnk-baton-validator', phase: 'Validate', schema: VALID },
   )
   log(`Validation: ${validation.status}`)
@@ -371,7 +385,12 @@ if (shipped) {
 }
 
 // ---- Merge (default on; local fast-forward only, never push) ---------------
-const validationOk = !validation || validation.status === 'PASS'
+// Staging: OK to ship unless validation explicitly FAILed (SKIPPED/absent is tolerated).
+// Prod: validation is MANDATORY and must be PASS — a SKIPPED/absent validation blocks the ship.
+const prodValidationMissing = isProd && !(validation && validation.status === 'PASS')
+const validationOk = isProd
+  ? (validation && validation.status === 'PASS')
+  : (!validation || validation.status === 'PASS')
 let merge = null
 if (shipped && wantMerge && validationOk) {
   phase('Merge')
@@ -385,11 +404,12 @@ if (shipped && wantMerge && validationOk) {
 // ---- Report ----------------------------------------------------------------
 const merged = merge && merge.status === 'MERGED'
 return {
-  status: validation && validation.status === 'FAIL' ? 'VALIDATION-FAILED'
+  status: (validation && validation.status === 'FAIL') || prodValidationMissing ? 'VALIDATION-FAILED'
     : merged ? 'MERGED'
     : 'READY',
   branch,
   base,
+  environment: env,
   worktree: merged ? '(removed after merge)' : workdir,
   plan,
   tests: { files: tests.testFiles, run: tests.runCommand },
@@ -409,5 +429,7 @@ return {
     ? `Merged ${branch} into ${base} locally (${merge.baseCommit}); worktree cleaned up. Push when ready: git push origin ${base}.`
     : (merge && merge.status === 'NOT_FF')
       ? `${base} moved; not fast-forwardable. Re-run pnk-baton (it will re-integrate) or integrate+merge manually from worktree ${workdir}.`
-      : `Branch ${branch} is built, tested, and reviewed in worktree ${workdir}. Merge: git -C ${repo} merge ${branch}.`,
+      : prodValidationMissing
+        ? `PROD target: real-infrastructure validation did not PASS (status: ${validation ? validation.status : 'unavailable'}). A prod-targeted change must pass validation before it can ship — not merged; branch left intact at ${workdir}. Re-run after validation passes.`
+        : `Branch ${branch} is built, tested, and reviewed (${env}) in worktree ${workdir}. Merge: git -C ${repo} merge ${branch}.`,
 }
