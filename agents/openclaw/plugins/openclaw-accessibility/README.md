@@ -68,3 +68,11 @@ Installing into a live OpenClaw agent is deploy-specific and out of scope for
 this repo. In short: make this directory available to the agent's OpenClaw
 plugin config, set the configuration appropriate for that environment, restart
 the gateway, and verify with `openclaw plugins inspect openclaw-accessibility`.
+
+## Credits
+
+The `accessibility` and `a11y-auditor` skills (their `SKILL.md` and
+`references/`) are forked from the MIT-licensed **accessibility** skill by
+**Jeremy Dawes (Jezweb)** — <https://github.com/jezweb/claude-skills>. The WCAG
+guidance is the original author's work; this plugin adapts it for OpenClaw and
+adds the `a11y_audit` tool. See [`NOTICE`](./NOTICE) for the license.

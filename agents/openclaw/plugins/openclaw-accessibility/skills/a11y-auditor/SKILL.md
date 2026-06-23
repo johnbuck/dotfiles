@@ -113,3 +113,7 @@ meaningful link text, and that color is never the sole signal.
 - Honor the fail-open contract: a `{ ok: false }` result is an audit failure to
   report, not a clean bill of health.
 - Be thorough but concise — actionable fixes with clear before/after code.
+
+---
+
+_Adapted from the MIT-licensed [accessibility skill](https://github.com/jezweb/claude-skills) by Jeremy Dawes (Jezweb). See the plugin `NOTICE` for license details._
