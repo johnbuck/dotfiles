@@ -28,7 +28,7 @@ A native OpenClaw plugin at `agents/openclaw/plugins/openclaw-accessibility/` in
 
 ## Behavior
 
-- **Actors / systems:** An OpenClaw agent calls `a11y_audit` during a turn. The tool connects to a running Chromium over the Chrome DevTools Protocol (CDP — the wire protocol a browser exposes for remote control), the same browser OpenClaw already manages. axe-core (an open-source accessibility rule engine) runs inside that page.
+- **Actors / systems:** An OpenClaw agent calls `a11y_audit` during a turn. The tool connects to a CDP-reachable Chromium over the Chrome DevTools Protocol (CDP — the wire protocol a browser exposes for remote control). The browser may be local (`http://…`) or a remote/managed browser the agent points it at (`wss://…`, e.g. AWS Bedrock AgentCore Browser, with optional auth headers). axe-core (an open-source accessibility rule engine) runs inside that page.
 - **Preconditions:** A reachable CDP endpoint (configurable). For unit tests, no browser is needed — the browser runner is mocked.
 - **Main flow:**
   1. Agent invokes `a11y_audit` with either `url` or `html`, optionally `standard`.
@@ -235,7 +235,8 @@ This is an in-process tool, not a long-running service, so there is no Uptime Ku
 2. **TypeBox vs zero-dep:** Resolved in favour of zero-dep. `parameters`/`configSchema` are plain JSON-Schema object literals; the module loads with **no third-party packages installed**, which is what makes `node --test` dependency-free. If the real SDK strictly demands a TypeBox instance, that conversion happens at the deploy boundary (out of scope). **Confirm at install.**
 3. **skill-scanner invocation:** Confirmed the criterion's literal command `skill-scanner scan .../skills` **does not work** — `scan` targets a single package and errors `SKILL.md not found` on the parent dir holding two skill packages. The working invocation is **`skill-scanner scan-all .../skills`** → `Skills Scanned: 2, Safe Skills: 2`, max severity **INFO** (1 info finding each), i.e. `[OK]` SAFE. Per-skill `skill-scanner scan .../skills/accessibility` also works. The skills are SAFE; the criterion's command string is the only thing that needed correcting.
 4. **tsc unavailable:** Confirmed `tsc not found` in this environment; the tsconfig typecheck is editor/optional and is **not** a hard gate. `node --test` is the real gate and is green.
-5. **cdpEndpoint default:** Left at the `http://127.0.0.1:9222` build placeholder; real Juliet Chromium endpoint is a deploy-time config value (the `[@humanUser]` open question above). Non-blocking for build/tests.
+5. **cdpEndpoint default:** Left at the `http://127.0.0.1:9222` build placeholder; the real endpoint is a deploy-time config value per agent (the `[@humanUser]` open question above). Non-blocking for build/tests.
+6. **Host-agnostic + remote-browser support (post-merge generalization):** Verified the tool carries no agent/host-specific coupling — the endpoint is pure config. Generalized the runner so it also attaches to a **remote/managed** browser: `cdpEndpoint` accepts `ws(s)://` (passed to `connectOverCDP` directly) and a new `cdpHeaders` config forwards auth headers (e.g. AWS Bedrock AgentCore Browser's signed CDP socket), plus `connectTimeoutMs`. The plugin only passes headers through — it does not mint AWS SigV4 (that would couple it to one cloud); direct-connect SigV4 headers are short-lived, so a local CDP proxy is the durable pattern for a long-running agent. Added the pure `buildConnectArgs` helper + unit test (`buildConnectArgs forwards endpoint, headers, timeout`); real-browser e2e (12/12) re-run after the change.
 
 ### Lessons / gotchas for a future maintainer
 

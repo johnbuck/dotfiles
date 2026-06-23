@@ -142,6 +142,35 @@ test("buildAxeOptions AAA", async () => {
 });
 
 // ---------------------------------------------------------------------------
+// Criterion: remote-auth-passthrough
+//   buildConnectArgs forwards optional auth headers + connect timeout to
+//   connectOverCDP, so the runner can attach to a remote/authenticated browser
+//   (e.g. AWS Bedrock AgentCore Browser's wss:// CDP endpoint). Nothing is
+//   host-specific: endpoint + headers are pure inputs.
+
+test("buildConnectArgs forwards endpoint, headers, timeout", async () => {
+  const { buildConnectArgs } = await loadAudit();
+
+  // Bare local connect: no headers, no timeout -> empty options.
+  const [ep1, opt1] = buildConnectArgs("http://127.0.0.1:9222");
+  assert.equal(ep1, "http://127.0.0.1:9222");
+  assert.deepEqual(opt1, {}, "local connect must stay a bare call (no options)");
+
+  // Remote authenticated connect: wss endpoint + signed headers are passed through.
+  const wss = "wss://bedrock-agentcore.example/cdp";
+  const headers = { Authorization: "AWS4-HMAC-SHA256 ...", "X-Amz-Date": "20260623T000000Z" };
+  const [ep2, opt2] = buildConnectArgs(wss, headers, 15000);
+  assert.equal(ep2, wss, "endpoint passed through verbatim (wss supported)");
+  assert.deepEqual(opt2.headers, headers, "auth headers must reach connectOverCDP");
+  assert.equal(opt2.timeout, 15000, "connect timeout must be forwarded");
+
+  // Empty header map is omitted (not sent as {}).
+  const [, opt3] = buildConnectArgs(wss, {}, 0);
+  assert.equal("headers" in opt3, false, "empty headers must be omitted");
+  assert.equal("timeout" in opt3, false, "zero/unset timeout must be omitted");
+});
+
+// ---------------------------------------------------------------------------
 // Criterion: shapes-violations
 //   shapeResult on a canned axe result → summary.violations == count and
 //   violations[].{id,impact,help,helpUrl,nodes} populated.

@@ -1,8 +1,10 @@
 // openclaw-accessibility
 //
 // Native OpenClaw plugin that registers the `a11y_audit` tool: it runs
-// axe-core against a web page (or a raw HTML string) over an existing
-// Chromium via CDP and returns structured WCAG findings.
+// axe-core against a web page (or a raw HTML string) over a CDP-reachable
+// Chromium and returns structured WCAG findings. The browser may be local
+// or remote/managed (e.g. AWS Bedrock AgentCore Browser) — the endpoint and
+// any auth headers are plugin config, so nothing here is host-specific.
 //
 // This file is thin wiring. All logic lives in ./lib/audit.ts so it can be
 // unit-tested browser-free. The default export exposes register(api), which
@@ -19,13 +21,14 @@ const DEFAULTS = {
   cdpEndpoint: "http://127.0.0.1:9222",
   defaultStandard: "WCAG2.1AA",
   timeoutMs: 30000,
+  connectTimeoutMs: 30000,
 };
 
 export default {
   id: "openclaw-accessibility",
   name: "OpenClaw Accessibility",
   description:
-    "Registers the a11y_audit tool: runs axe-core against a page or HTML string over the existing Chromium (CDP) and returns structured WCAG violations. Ships the accessibility and a11y-auditor skills that drive it.",
+    "Registers the a11y_audit tool: runs axe-core against a page or HTML string over a CDP-reachable Chromium (local or remote/managed, e.g. AWS Bedrock AgentCore Browser) and returns structured WCAG violations. Ships the accessibility and a11y-auditor skills that drive it.",
   configSchema: {
     type: "object",
     additionalProperties: false,
@@ -33,7 +36,19 @@ export default {
       cdpEndpoint: {
         type: "string",
         default: DEFAULTS.cdpEndpoint,
-        description: "CDP endpoint of the Chromium to connect to (set per host at deploy).",
+        description:
+          "CDP endpoint to attach to. http(s):// for a local browser, or ws(s):// for a remote/managed browser (e.g. AWS Bedrock AgentCore Browser). Set per agent at deploy.",
+      },
+      cdpHeaders: {
+        type: "object",
+        additionalProperties: { type: "string" },
+        description:
+          "Optional HTTP headers sent on the CDP connect handshake. Use for a browser that authenticates the CDP socket (e.g. AgentCore's signed Authorization headers). Omit for a local browser.",
+      },
+      connectTimeoutMs: {
+        type: "number",
+        default: DEFAULTS.connectTimeoutMs,
+        description: "Timeout for the CDP connect handshake.",
       },
       defaultStandard: {
         type: "string",
@@ -52,10 +67,12 @@ export default {
   register(api: any) {
     const cfg = api?.pluginConfig ?? {};
     const cdpEndpoint = cfg.cdpEndpoint ?? DEFAULTS.cdpEndpoint;
+    const cdpHeaders = cfg.cdpHeaders ?? undefined;
+    const connectTimeoutMs = cfg.connectTimeoutMs ?? DEFAULTS.connectTimeoutMs;
     const defaultStandard = cfg.defaultStandard ?? DEFAULTS.defaultStandard;
     const timeoutMs = cfg.timeoutMs ?? DEFAULTS.timeoutMs;
 
-    const runner = createCdpRunner({ cdpEndpoint });
+    const runner = createCdpRunner({ cdpEndpoint, cdpHeaders, connectTimeoutMs });
 
     api.registerTool({
       name: "a11y_audit",
