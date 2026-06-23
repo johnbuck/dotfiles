@@ -30,7 +30,7 @@ async function loadAudit(): Promise<any> {
   return await import("./lib/audit.ts");
 }
 
-// Load the plugin entry (default export with setup(api)).
+// Load the plugin entry (default export with register(api)).
 async function loadIndex(): Promise<any> {
   const mod = await import("./index.ts");
   return mod.default ?? mod;
@@ -226,12 +226,14 @@ test("execute fails open", async () => {
 
 // ---------------------------------------------------------------------------
 // Criterion: registers-a11y-audit-tool
-//   setup(api) calls api.registerTool exactly once with name "a11y_audit"
+//   register(api) calls api.registerTool exactly once with name "a11y_audit"
 //   and a parameters schema exposing url, html, standard.
+//   (Lifecycle method is `register`, matching the in-repo sibling plugins and
+//   the live OpenClaw SDK convention — every in-tree tool extension uses it.)
 
-test("setup registers tool", async () => {
+test("register registers tool", async () => {
   const plugin = await loadIndex();
-  assert.equal(typeof plugin.setup, "function", "default export must expose setup(api)");
+  assert.equal(typeof plugin.register, "function", "default export must expose register(api)");
 
   const registered: any[] = [];
   const fakeApi = {
@@ -244,7 +246,7 @@ test("setup registers tool", async () => {
     on() {},
   };
 
-  await plugin.setup(fakeApi);
+  await plugin.register(fakeApi);
 
   assert.equal(registered.length, 1, "registerTool must be called exactly once");
   const def = registered[0];

@@ -5,7 +5,7 @@
 // Chromium via CDP and returns structured WCAG findings.
 //
 // This file is thin wiring. All logic lives in ./lib/audit.ts so it can be
-// unit-tested browser-free. The default export exposes setup(api), which
+// unit-tested browser-free. The default export exposes register(api), which
 // registers exactly one tool. `parameters` is a plain JSON-Schema object
 // literal (not a TypeBox import) so the module loads with zero third-party
 // packages installed — the node:test suite depends on that.
@@ -49,7 +49,7 @@ export default {
     },
   },
 
-  setup(api: any) {
+  register(api: any) {
     const cfg = api?.pluginConfig ?? {};
     const cdpEndpoint = cfg.cdpEndpoint ?? DEFAULTS.cdpEndpoint;
     const defaultStandard = cfg.defaultStandard ?? DEFAULTS.defaultStandard;
