@@ -10,12 +10,13 @@ A pre-commit scan blocks any commit with a token or sensitive filename.
 ```
 dotfiles/
 ├── hooks/pre-commit   # secret guard
-├── agents/            # AI agent configs (OpenClaw)
+├── agents/            # AI agent harness configs
+│   ├── openclaw/      # OpenClaw (Juliet)
+│   └── hermes/        # Hermes — portable plugins + skills
 ├── mcp-servers/       # MCP server links + wrappers
-└── dotfiles/
-    ├── claude/        # Claude Code (incl. the pnk-baton pipeline — see dotfiles/claude/PNK-BATON.md)
-    ├── opencode/      # OpenCode
-    └── ghostty/       # Ghostty terminal
+├── claude/            # Claude Code (incl. the pnk-baton pipeline — see claude/PNK-BATON.md)
+├── opencode/          # OpenCode
+└── ghostty/           # Ghostty terminal
 ```
 
 Each folder has its own README.
@@ -28,7 +29,7 @@ cd ~/dotfiles
 git config core.hooksPath hooks    # turn on the secret scan
 ```
 
-Then run the installer for whatever you want, e.g. `dotfiles/claude/install.sh`.
+Then run the installer for whatever you want, e.g. `claude/install.sh`.
 
 ## Scope
 
