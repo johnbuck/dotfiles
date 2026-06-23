@@ -71,9 +71,67 @@ is injected as a fake. `playwright-core` and `axe-core` are runtime-only
 dependencies (declared in `package.json`); OpenClaw installs them under
 `~/.openclaw/plugin-runtime-deps/` at install time.
 
-## Install (pointer)
+## Install
 
-Installing this plugin into a live OpenClaw agent is deploy-specific and
-intentionally out of scope here. Point the agent's OpenClaw plugin config at
-this directory, set `cdpEndpoint` (and `cdpHeaders` if the browser authenticates
-its CDP socket), then verify with `openclaw plugins inspect openclaw-accessibility`.
+This is a **native** OpenClaw plugin (`openclaw.plugin.json` + `package.json`
+with `openclaw.extensions`, runs in-process). Steps for the target agent:
+
+**1. Get the plugin onto the agent's host.** Either:
+
+```bash
+# from a checkout of this repo, on the agent's host:
+openclaw plugins install ./agents/openclaw/plugins/openclaw-accessibility
+```
+
+…or, for an agent-hub style layout where plugins are mounted, copy this whole
+directory into the agent's plugin/extensions dir so the runtime loads it from
+there. (`openclaw plugins list` should then show it as `Format: native`.)
+
+**2. Runtime dependencies.** The tool needs `playwright-core` and `axe-core`
+(declared in `package.json` `dependencies`). OpenClaw installs declared plugin
+deps under `~/.openclaw/plugin-runtime-deps/` at install time. It does **not**
+download a browser — it attaches to the CDP browser you point it at (step 3).
+
+**3. Configure + enable** in the agent's `openclaw.json`:
+
+```json5
+{
+  plugins: {
+    entries: {
+      "openclaw-accessibility": {
+        enabled: true,
+        config: {
+          // local browser:
+          cdpEndpoint: "http://127.0.0.1:9222",
+          // OR a remote/managed browser (e.g. AgentCore) — see the section above:
+          // cdpEndpoint: "wss://<agentcore-cdp-host>/...",
+          // cdpHeaders: { Authorization: "...", "X-Amz-Date": "..." },
+          defaultStandard: "WCAG2.1AA",
+        },
+      },
+    },
+  },
+}
+```
+
+If the agent restricts skills per-agent (`agents.list[].skills`), add
+`accessibility` and `a11y-auditor` to that allowlist so the bot can see them.
+
+**4. Restart** so the plugin loads and config is read:
+
+```bash
+openclaw gateway restart      # or: docker compose up -d --force-recreate <svc>
+```
+
+**5. Verify:**
+
+```bash
+openclaw plugins inspect openclaw-accessibility   # Format: native, tool a11y_audit
+openclaw skills list                              # accessibility, a11y-auditor present
+openclaw agent --message "audit https://example.com for accessibility"
+```
+
+A successful audit returns `{ ok: true, summary: { violations, passes, … }, … }`.
+A connection problem returns `{ ok: false, error: "browser_unavailable", … }`
+(the tool fails open — it never breaks the agent turn), which points at the
+`cdpEndpoint` / `cdpHeaders` config.
