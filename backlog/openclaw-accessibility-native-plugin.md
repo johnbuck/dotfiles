@@ -14,7 +14,7 @@ tags: [backlog, accessibility, axe-core]
 
 ## Why this exists
 
-Today the accessibility content is a Claude Code skill bundle (`/home/trumble/Downloads/openclaw-skills-accessibility-1.0.2`). Dropped into OpenClaw it loads only as instructional text: its `agents/a11y-auditor.md` subagent and `rules/` are Claude-only and are not executed, and there is no way to actually *measure* a page's accessibility. We want OpenClaw agents (Juliet and any bot with the plugin) to run a genuine automated audit, not just recite WCAG advice.
+Today the accessibility content is a Claude Code skill bundle (`/home/trumble/Downloads/openclaw-skills-accessibility-1.0.2`) — the MIT-licensed [accessibility skill](https://github.com/jezweb/claude-skills) by Jeremy Dawes (Jezweb), which this work forks and credits (see the plugin `NOTICE`). Dropped into OpenClaw it loads only as instructional text: its `agents/a11y-auditor.md` subagent and `rules/` are Claude-only and are not executed, and there is no way to actually *measure* a page's accessibility. We want OpenClaw agents (Juliet and any bot with the plugin) to run a genuine automated audit, not just recite WCAG advice.
 
 The plugin registers an in-process `a11y_audit` tool so OpenClaw can actually measure a page's accessibility, not just surface guidance text. See `agents/openclaw/plugins/pipeline-guard/` for the sibling plugin conventions this follows.
 

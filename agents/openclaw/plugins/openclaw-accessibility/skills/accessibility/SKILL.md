@@ -170,3 +170,7 @@ Load these for deep dives:
 - `references/forms-validation.md` — accessible forms and error handling
 
 For an automated audit and report, spawn the **a11y-auditor** skill.
+
+---
+
+_Adapted from the MIT-licensed [accessibility skill](https://github.com/jezweb/claude-skills) by Jeremy Dawes (Jezweb). See the plugin `NOTICE` for license details._
