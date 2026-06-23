@@ -171,6 +171,59 @@ test("buildConnectArgs forwards endpoint, headers, timeout", async () => {
 });
 
 // ---------------------------------------------------------------------------
+// Criterion: waitUntil-configurable
+//   resolveWaitUntil validates the configured navigation wait condition and
+//   defaults to "load" for anything unrecognized.
+
+test("resolveWaitUntil validates and defaults", async () => {
+  const { resolveWaitUntil } = await loadAudit();
+  assert.equal(resolveWaitUntil(), "load", "default is load");
+  assert.equal(resolveWaitUntil("networkidle"), "networkidle");
+  assert.equal(resolveWaitUntil("domcontentloaded"), "domcontentloaded");
+  assert.equal(resolveWaitUntil("bogus"), "load", "unknown value falls back to load");
+});
+
+// ---------------------------------------------------------------------------
+// Criterion: provider-selection
+//   createRunnerFromConfig returns a runner for either provider; cdp is default.
+
+test("createRunnerFromConfig selects a provider", async () => {
+  const { createRunnerFromConfig } = await loadAudit();
+  assert.equal(typeof createRunnerFromConfig(), "function", "default (cdp) runner");
+  assert.equal(
+    typeof createRunnerFromConfig({ browserProvider: "agentcore", agentcore: { region: "us-east-1" } }),
+    "function",
+    "agentcore runner",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Criterion: agentcore-automation-url
+//   buildAutomationUrl produces the documented CDP automation URL. Pure, no AWS.
+
+test("buildAutomationUrl shape", async () => {
+  const { buildAutomationUrl } = await import("./lib/agentcore.ts");
+  assert.equal(
+    buildAutomationUrl("us-west-2", "aws.browser.v1", "sess-123"),
+    "https://bedrock-agentcore.us-west-2.amazonaws.com/browser-streams/aws.browser.v1/sessions/sess-123/automation",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Criterion: agentcore-fails-open
+//   The agentcore provider fails open (no AWS packages required) when its
+//   mandatory region config is missing — execute resolves { ok:false } and never
+//   throws. Proves the provider wiring + fail-open without touching AWS.
+
+test("agentcore provider fails open on missing region", async () => {
+  const { execute, createRunnerFromConfig } = await loadAudit();
+  const runner = createRunnerFromConfig({ browserProvider: "agentcore" }); // no agentcore.region
+  const r = await execute({ html: "<button></button>" }, runner);
+  assert.equal(r.ok, false, "missing region must fail, not audit");
+  assert.equal(r.error, "browser_unavailable");
+});
+
+// ---------------------------------------------------------------------------
 // Criterion: shapes-violations
 //   shapeResult on a canned axe result → summary.violations == count and
 //   violations[].{id,impact,help,helpUrl,nodes} populated.

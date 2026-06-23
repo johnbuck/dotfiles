@@ -31,23 +31,37 @@ Provide exactly one of `url` / `html`. `standard` ∈ `WCAG2.0AA`, `WCAG2.1AA`
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `cdpEndpoint` | `http://127.0.0.1:9222` | CDP endpoint to attach to. `http(s)://` (local) or `ws(s)://` (remote/managed, e.g. AgentCore). Set per agent at deploy. |
-| `cdpHeaders` | _(none)_ | Optional headers for the CDP connect handshake — for a browser that authenticates the socket (e.g. AgentCore signed `Authorization`). Omit for local. |
+| `browserProvider` | `cdp` | How the browser is supplied: `cdp` (attach to a standing endpoint) or `agentcore` (per-audit AWS Bedrock AgentCore session). |
+| `waitUntil` | `load` | Page navigation wait condition: `load` / `domcontentloaded` / `networkidle` / `commit`. For SPA / managed browsers, `networkidle` avoids auditing a half-rendered page. |
+| `cdpEndpoint` | `http://127.0.0.1:9222` | (`cdp` provider) CDP endpoint. `http(s)://` (local) or `ws(s)://` (remote/managed). |
+| `cdpHeaders` | _(none)_ | (`cdp` provider) Optional headers for the CDP connect handshake, for a browser that authenticates the socket. |
 | `connectTimeoutMs` | `30000` | Timeout for the CDP connect handshake. |
+| `agentcore` | _(none)_ | (`agentcore` provider) `{ region, identifier?, sessionTimeoutSeconds? }`. IAM auth comes from the agent's ambient AWS credentials — no keys here. |
 | `defaultStandard` | `WCAG2.1AA` | Standard used when a call omits `standard`. |
 | `timeoutMs` | `30000` | Max time for one audit before failing open with `timeout`. |
 
-### Connecting to a remote/managed browser (e.g. AWS Bedrock AgentCore Browser)
+### Browser providers
 
-The browser does not have to be local. `cdpEndpoint` accepts a `ws(s)://` URL
-and `cdpHeaders` forwards any headers the CDP socket needs, so the tool can
-attach to a remote/managed browser such as AWS Bedrock AgentCore Browser. The
-plugin only passes headers through to `connectOverCDP`; it does not mint AWS
-SigV4 itself.
+**`cdp` (default)** — attach to a standing CDP endpoint. `cdpEndpoint` accepts
+`http(s)://` (local) or `ws(s)://`, and `cdpHeaders` forwards any auth headers
+the socket needs. The plugin only passes headers through; it does not mint AWS
+SigV4. Note: statically-configured SigV4 headers are short-lived and will expire
+for a long-running agent.
 
-> Note: SigV4-signed headers are short-lived, so a long-running agent that
-> connects directly will see them expire. Reaching the browser through a local
-> CDP proxy that refreshes auth avoids that.
+**`agentcore`** — for AWS Bedrock AgentCore, where there is no standing CDP URL:
+the endpoint only exists after you start a session, and its signed credentials
+are short-lived. With `browserProvider: "agentcore"` the plugin starts its own
+short-lived AgentCore browser session **per audit**, attaches over CDP, audits,
+then stops the session. Because credentials are minted and torn down per audit,
+the expiry problem does not apply (auditing is one-shot). IAM comes from the
+agent's ambient AWS credentials. Requires the AWS SDK packages (declared as
+`optionalDependencies`) on the host.
+
+> Status: the `agentcore` provider's session lifecycle is a first cut written
+> from AWS's documented CDP automation URL + SigV4 signing. The exact
+> `StartBrowserSession`/`StopBrowserSession` fields are marked `VERIFY` in
+> `lib/agentcore.ts` and should be validated against a live AgentCore setup
+> before production use. The `cdp` provider and the local default are unchanged.
 
 ## Tests
 
