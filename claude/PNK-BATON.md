@@ -10,14 +10,14 @@ build → integrate base → adversarial review → **accept (drift gate)** → 
 
 pnk-baton is spread across the four directories Claude Code reads each kind of config from:
 
-| In this repo (`dotfiles/claude/`) | Installs to | What it is |
+| In this repo (`claude/`) | Installs to | What it is |
 |---|---|---|
 | `agents/pnk-baton-*.md` | `~/.claude/agents/` | The 9 stage subagents |
 | `workflows/pnk-baton.js` | `~/.claude/workflows/` | The orchestration script |
 | `commands/pnk-baton.md` | `~/.claude/commands/` | The `/pnk-baton` slash command |
 | `hooks/pnk-baton-guard.sh` | `~/.claude/hooks/` | Optional feature-branch guard (opt-in per repo) |
 
-`dotfiles/claude/install.sh` copies all four into `~/.claude/` (backing up anything
+`claude/install.sh` copies all four into `~/.claude/` (backing up anything
 it overwrites). After install, restart Claude Code so it registers the agents,
 workflow, and command.
 

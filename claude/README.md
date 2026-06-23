@@ -32,7 +32,7 @@ Never committed — these stay on each machine and are blocked by `.gitignore` +
 
 ```bash
 git clone https://github.com/johnbuck/dotfiles ~/dotfiles
-cd ~/dotfiles/dotfiles/claude
+cd ~/dotfiles/claude
 ./install.sh
 ```
 
