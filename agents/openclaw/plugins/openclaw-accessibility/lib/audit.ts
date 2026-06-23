@@ -114,6 +114,9 @@ export interface AgentCoreConfig {
   // Session TTL the control plane enforces. We start and stop per audit, so this
   // is just an upper bound; keep it short.
   sessionTimeoutSeconds?: number;
+  // Optional viewport for the managed browser. Affects responsive checks; the
+  // SDK applies its own default when omitted.
+  viewport?: { width: number; height: number };
 }
 
 // A connected browser plus how to tear it down. The cdp provider's dispose just

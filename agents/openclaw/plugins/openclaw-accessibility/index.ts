@@ -64,6 +64,15 @@ export default {
             type: "number",
             description: "Upper-bound TTL for the per-audit session (started and stopped each audit).",
           },
+          viewport: {
+            type: "object",
+            additionalProperties: false,
+            description: "Optional viewport for the managed browser (affects responsive checks).",
+            properties: {
+              width: { type: "number" },
+              height: { type: "number" },
+            },
+          },
         },
       },
       cdpEndpoint: {
