@@ -8,7 +8,7 @@
 //   buildAxeOptions   — WCAG standard -> axe tag set (pure)
 //   shapeResult       — raw axe output -> { ok, standard, target, summary, violations } (pure)
 //   toErrorResult     — error -> structured { ok:false, error, message, ... } (pure)
-//   createCdpRunner   — factory for the real runner; uses dynamic import() inside
+//   createCdpRunner   — factory for the CDP runner; uses dynamic import() inside
 //                       so build/tests stay dependency-free
 //   execute           — orchestrates validate -> buildAxeOptions -> runner -> shapeResult,
 //                       always resolves to { ok:... }, never throws (fails open)
@@ -214,7 +214,7 @@ export function toErrorResult(
 }
 
 // ---------------------------------------------------------------------------
-// createCdpRunner — the real runner. Attaches to a CDP-reachable Chromium
+// createCdpRunner — the CDP runner. Attaches to a CDP-reachable Chromium
 // (local OR remote/managed, e.g. AWS Bedrock AgentCore Browser) over CDP (no
 // second browser), injects axe-core, runs it, closes the page. Dynamic
 // import() inside the body keeps build/tests dependency-free.

@@ -10,13 +10,13 @@ tags: [backlog, accessibility, axe-core]
 
 # OpenClaw accessibility native plugin with a11y_audit tool
 
-**One sentence:** Convert the existing Claude "accessibility" skill into a native OpenClaw plugin that registers a real `a11y_audit` tool (runs axe-core in a browser and returns structured WCAG findings) and ships two skills that drive it.
+**One sentence:** Convert the existing Claude "accessibility" skill into a native OpenClaw plugin that registers an `a11y_audit` tool (runs axe-core in a browser and returns structured WCAG findings) and ships two skills that drive it.
 
 ## Why this exists
 
 Today the accessibility content is a Claude Code skill bundle (`/home/trumble/Downloads/openclaw-skills-accessibility-1.0.2`). Dropped into OpenClaw it loads only as instructional text: its `agents/a11y-auditor.md` subagent and `rules/` are Claude-only and are not executed, and there is no way to actually *measure* a page's accessibility. We want OpenClaw agents (Juliet and any bot with the plugin) to run a genuine automated audit, not just recite WCAG advice.
 
-A native plugin is the right format because it can register an in-process tool. A Claude *bundle* (which the folder already is) would load the skill text but can never add the audit capability. See `agents/openclaw/plugins/pipeline-guard/` for the sibling native-plugin conventions this follows.
+The plugin registers an in-process `a11y_audit` tool so OpenClaw can actually measure a page's accessibility, not just surface guidance text. See `agents/openclaw/plugins/pipeline-guard/` for the sibling plugin conventions this follows.
 
 ## What we're building
 
@@ -42,7 +42,7 @@ A native OpenClaw plugin at `agents/openclaw/plugins/openclaw-accessibility/` in
 
 ## Acceptance criteria
 
-These are pnk-baton's contract. Unit tests use `node:test` (Node 26 strips TypeScript types natively, so `node --test` runs the `.ts` tests with zero dependencies). The default browser runner is replaced with a fake in tests, so no real browser is required.
+These are pnk-baton's contract. Unit tests use `node:test` (Node 26 strips TypeScript types natively, so `node --test` runs the `.ts` tests with zero dependencies). The default browser runner is replaced with a fake in tests, so no browser is required.
 
 - **requires-url-or-html** — input with neither `url` nor `html` returns `{ ok: false, error: "invalid_input" }` and does not call the runner; verified by: `node --test` unit test `validateInput rejects empty`.
 - **rejects-url-and-html** — input with both `url` and `html` returns `{ ok: false, error: "invalid_input" }`; verified by: unit test `validateInput rejects both` (the url-XOR-html rule).
@@ -73,7 +73,7 @@ These are pnk-baton's contract. Unit tests use `node:test` (Node 26 strips TypeS
 6. execute() -> shapeResult(axeRaw,...)     (pure) OR toErrorResult(err) on throw
 7. return structured object to the agent
 ```
-Steps 2, 3, 6 are pure functions with no browser dependency — that is where the acceptance criteria bite. Step 4 is the seam: `execute` takes the runner as an injected dependency defaulting to the real CDP runner, so tests pass a fake runner.
+Steps 2, 3, 6 are pure functions with no browser dependency — that is where the acceptance criteria bite. Step 4 is the seam: `execute` takes the runner as an injected dependency defaulting to the CDP runner, so tests pass a fake runner.
 
 **Runtime-dependency strategy (why the build stays browser-free):** the default CDP runner uses **dynamic `import("playwright-core")` and `import("axe-core")` inside the function body**, with a minimal local TypeScript interface for the bits it uses (no static type import). Tests never invoke the default runner, so `node --test` and any typecheck run with **zero third-party packages installed**. `playwright-core` and `axe-core` are declared in `package.json` `dependencies` for runtime; OpenClaw installs declared plugin deps at install time under `~/.openclaw/plugin-runtime-deps/` (observed on the live host), so they are present when the plugin actually runs. We use `playwright-core` (not full `playwright`) and `connectOverCDP` precisely so the plugin does **not** download or launch its own browser — it reuses the Chromium OpenClaw already runs.
 
@@ -140,7 +140,7 @@ Error codes: `invalid_input`, `browser_unavailable`, `navigation_failed`, `audit
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| Real CDP endpoint varies per host / unknown at build time | Tool can't connect in prod | `cdpEndpoint` configurable; real wiring validated at deploy (out of scope here); unit tests don't need it |
+| The CDP endpoint varies per host / unknown at build time | Tool can't connect in prod | `cdpEndpoint` configurable; live wiring validated at deploy (out of scope here); unit tests don't need it |
 | Runtime deps not present in container | Tool import fails at runtime | Declared in `dependencies`; OpenClaw installs plugin deps under `~/.openclaw/plugin-runtime-deps/`; dynamic-import keeps build/tests dep-free |
 | A slow or hung page blocks the agent turn | Degraded agent | `timeoutMs` wraps the runner; fail open on timeout |
 | axe-core / playwright-core version drift | Breakage on update | Pin to caret ranges in `dependencies` |
@@ -177,7 +177,7 @@ No persisted data is touched — the tool is stateless and writes nothing. No da
 ### Out of scope (deliberately deferred)
 - Deploying/registering the plugin in the live Juliet container (machine-specific ops; done separately, off the public repo).
 - Publishing to ClawHub or npm.
-- Real-browser integration/end-to-end test against an actual CDP Chromium (unit tests mock the runner; live validation happens at deploy).
+- Browser integration/end-to-end test against an actual CDP Chromium (unit tests mock the runner; live validation happens at deploy).
 - Any change to `pipeline-guard` or other existing plugins.
 
 ## Testing
@@ -185,7 +185,7 @@ No persisted data is touched — the tool is stateless and writes nothing. No da
 - **Unit (`node:test`):** every acceptance criterion above maps to a test in `index.test.ts`, run with `node --test` (native TS type-stripping on Node 22.6+; Node 26 on the build host). The browser runner is injected as a fake, so the suite needs no browser and no installed dependencies.
 - **Static check on the skills:** `skill-scanner scan .../skills` must report SAFE (criterion `skill-scanner-safe`).
 - **Lint/format/type:** `tsconfig.json` enables `tsc --noEmit` typecheck (optional gate); no linter is introduced (repo has none for these plugins).
-- The real-browser path is exercised manually at deploy time, not in CI — stated in Out of scope.
+- The browser path is exercised manually at deploy time, not in CI — stated in Out of scope.
 
 ## Dependencies
 
@@ -198,7 +198,7 @@ This is an in-process tool, not a long-running service, so there is no Uptime Ku
 
 ## Open questions
 
-- `[@humanUser]` The default `cdpEndpoint` (`http://127.0.0.1:9222`) is a placeholder for the build. The real endpoint of Juliet's managed Chromium is a deploy-time value set in plugin config; confirm it when installing (non-blocking for this spec — the build and tests do not need it).
+- `[@humanUser]` The default `cdpEndpoint` (`http://127.0.0.1:9222`) is a placeholder for the build. The endpoint is a deploy-time value set in plugin config; confirm it when installing (non-blocking for this spec — the build and tests do not need it).
 
 ---
 
@@ -232,11 +232,11 @@ This is an in-process tool, not a long-running service, so there is no Uptime Ku
 ### Resolution of planner open questions
 
 1. **ENTRY-SHAPE (`setup` vs `register`): RESOLVED (post-merge verification pass).** The build initially shipped `setup(api)`. A verification pass probed the live OpenClaw 2026.4.24 SDK and found every in-tree tool-registering extension (`qqbot`, `feishu`, `browser`, …) and both dotfiles siblings (`pipeline-guard`, `sessions-worktree-injector`) use a default-export object with a `register(api)` method; none uses `setup`. The entry was renamed `setup` -> `register` (one line) and the unit test updated to `register registers tool`. No longer an open risk.
-2. **TypeBox vs zero-dep:** Resolved in favour of zero-dep. `parameters`/`configSchema` are plain JSON-Schema object literals; the module loads with **no third-party packages installed**, which is what makes `node --test` dependency-free. If the real SDK strictly demands a TypeBox instance, that conversion happens at the deploy boundary (out of scope). **Confirm at install.**
+2. **TypeBox vs zero-dep:** Resolved in favour of zero-dep. `parameters`/`configSchema` are plain JSON-Schema object literals; the module loads with **no third-party packages installed**, which is what makes `node --test` dependency-free. If the live SDK strictly demands a TypeBox instance, that conversion happens at the deploy boundary (out of scope). **Confirm at install.**
 3. **skill-scanner invocation:** Confirmed the criterion's literal command `skill-scanner scan .../skills` **does not work** — `scan` targets a single package and errors `SKILL.md not found` on the parent dir holding two skill packages. The working invocation is **`skill-scanner scan-all .../skills`** → `Skills Scanned: 2, Safe Skills: 2`, max severity **INFO** (1 info finding each), i.e. `[OK]` SAFE. Per-skill `skill-scanner scan .../skills/accessibility` also works. The skills are SAFE; the criterion's command string is the only thing that needed correcting.
-4. **tsc unavailable:** Confirmed `tsc not found` in this environment; the tsconfig typecheck is editor/optional and is **not** a hard gate. `node --test` is the real gate and is green.
-5. **cdpEndpoint default:** Left at the `http://127.0.0.1:9222` build placeholder; the real endpoint is a deploy-time config value per agent (the `[@humanUser]` open question above). Non-blocking for build/tests.
-6. **Host-agnostic + remote-browser support (post-merge generalization):** Verified the tool carries no agent/host-specific coupling — the endpoint is pure config. Generalized the runner so it also attaches to a **remote/managed** browser: `cdpEndpoint` accepts `ws(s)://` (passed to `connectOverCDP` directly) and a new `cdpHeaders` config forwards auth headers (e.g. AWS Bedrock AgentCore Browser's signed CDP socket), plus `connectTimeoutMs`. The plugin only passes headers through — it does not mint AWS SigV4 (that would couple it to one cloud); direct-connect SigV4 headers are short-lived, so a local CDP proxy is the durable pattern for a long-running agent. Added the pure `buildConnectArgs` helper + unit test (`buildConnectArgs forwards endpoint, headers, timeout`); real-browser e2e (12/12) re-run after the change.
+4. **tsc unavailable:** Confirmed `tsc not found` in this environment; the tsconfig typecheck is editor/optional and is **not** a hard gate. `node --test` is the gate and is green.
+5. **cdpEndpoint default:** Left at the `http://127.0.0.1:9222` build placeholder; the endpoint is a deploy-time config value per agent (the `[@humanUser]` open question above). Non-blocking for build/tests.
+6. **Host-agnostic + remote-browser support (post-merge generalization):** Verified the tool carries no agent/host-specific coupling — the endpoint is pure config. Generalized the runner so it also attaches to a **remote/managed** browser: `cdpEndpoint` accepts `ws(s)://` (passed to `connectOverCDP` directly) and a new `cdpHeaders` config forwards auth headers (e.g. AWS Bedrock AgentCore Browser's signed CDP socket), plus `connectTimeoutMs`. The plugin only passes headers through — it does not mint AWS SigV4 (that would couple it to one cloud); direct-connect SigV4 headers are short-lived, so a local CDP proxy is the durable pattern for a long-running agent. Added the pure `buildConnectArgs` helper + unit test (`buildConnectArgs forwards endpoint, headers, timeout`); browser e2e (12/12) re-run after the change.
 
 ### Lessons / gotchas for a future maintainer
 
@@ -244,7 +244,7 @@ This is an in-process tool, not a long-running service, so there is no Uptime Ku
 - **Intra-repo imports carry an explicit `.ts` extension** (`./lib/audit.ts`) — Node strips types but does not rewrite extensions; dropping the extension breaks module resolution.
 - **Never add a top-level `import` of `playwright-core`/`axe-core`** to `index.ts` or `lib/audit.ts` — that would make `node --test` require installed packages and break the dependency-free gate. They are imported lazily inside `createCdpRunner` only.
 - **skill-scanner: use `scan-all` for this dir, not `scan`** (two packages under one parent).
-- The CDP runner, timeout path, and real-browser end-to-end are **not** exercised by the suite (runner is mocked) — they are validated manually at deploy.
+- The CDP runner, timeout path, and browser end-to-end are **not** exercised by the suite (runner is mocked) — they are validated manually at deploy.
 
 ### How to verify
 
