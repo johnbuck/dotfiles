@@ -1,10 +1,11 @@
 # agents
 
-Configs for AI agents. One folder per agent.
+Configs for AI agent harnesses. One folder per harness.
 
 ```
 agents/
-└── openclaw/   # Juliet — OpenClaw agent (identity, plugins, openclaw.json)
+├── openclaw/   # Juliet — OpenClaw agent (identity, plugins, openclaw.json)
+└── hermes/     # Hermes — portable plugins + skills
 ```
 
-See each agent's own README for details.
+See each harness's own README for details.

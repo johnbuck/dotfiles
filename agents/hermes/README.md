@@ -1,7 +1,7 @@
 # hermes/
 
 Portable plugins **and skills** for the [Hermes Agent](https://github.com/NousResearch/hermes-agent)
-harness (the counterpart to `agents/` for OpenClaw). Topology-free — no hosts,
+harness (the counterpart to `../openclaw/`). Topology-free — no hosts,
 routes, or secrets; everything is read from config/env at runtime. Site-specific
 versions (with real hosts/paths/IDs) live in a private infra repo, not here.
 
