@@ -1,7 +1,7 @@
 {
   "id": "openclaw-accessibility",
   "name": "OpenClaw Accessibility",
-  "description": "Registers the a11y_audit tool: runs axe-core against a page or raw HTML over the existing Chromium (via CDP) and returns structured WCAG findings { ok, standard, target, summary, violations }, failing open to { ok:false, error } so a bad audit can never break the agent turn. Ships two skills (accessibility, a11y-auditor) that drive the tool.",
+  "description": "Registers the a11y_audit tool: runs axe-core against a page or raw HTML over a CDP-reachable Chromium (local or remote/managed, e.g. AWS Bedrock AgentCore Browser) and returns structured WCAG findings { ok, standard, target, summary, violations }, failing open to { ok:false, error } so a bad audit can never break the agent turn. Ships two skills (accessibility, a11y-auditor) that drive the tool.",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -9,7 +9,17 @@
       "cdpEndpoint": {
         "type": "string",
         "default": "http://127.0.0.1:9222",
-        "description": "CDP endpoint of the Chromium to connect to. Overridden at deploy time per host."
+        "description": "CDP endpoint to attach to. http(s):// for a local browser, or ws(s):// for a remote/managed browser (e.g. AWS Bedrock AgentCore Browser). Set per agent at deploy."
+      },
+      "cdpHeaders": {
+        "type": "object",
+        "additionalProperties": { "type": "string" },
+        "description": "Optional HTTP headers sent on the CDP connect handshake. Use for a browser that authenticates the CDP socket (e.g. AgentCore signed Authorization headers). Omit for a local browser."
+      },
+      "connectTimeoutMs": {
+        "type": "number",
+        "default": 30000,
+        "description": "Timeout for the CDP connect handshake."
       },
       "defaultStandard": {
         "type": "string",

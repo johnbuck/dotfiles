@@ -65,9 +65,38 @@ export interface AxeRunOptions {
 }
 
 export interface RunnerConfig {
+  // CDP endpoint to attach to. Accepts http(s):// (Playwright discovers the ws
+  // endpoint via /json/version) or ws(s):// (connected directly). A remote or
+  // managed browser — e.g. AWS Bedrock AgentCore Browser — is just a wss:// URL.
   cdpEndpoint?: string;
+  // Optional headers for the CDP connect handshake. Required by remote/managed
+  // browsers that authenticate the CDP socket (e.g. AWS Bedrock AgentCore
+  // Browser serves a wss:// endpoint with signed auth headers). Omit for a
+  // local browser that needs no auth.
+  cdpHeaders?: Record<string, string>;
+  // Timeout for the CDP connect handshake (ms). Separate from the per-audit
+  // timeoutMs that wraps the whole run.
+  connectTimeoutMs?: number;
   defaultStandard?: string;
   timeoutMs?: number;
+}
+
+// buildConnectArgs — assemble the (endpointURL, options) arguments for
+// playwright's connectOverCDP. Pure and exported so the header/timeout plumbing
+// (the part that makes a remote/authenticated browser work) is unit-testable
+// without a browser. Empty headers / unset timeout are omitted so a plain local
+// connect stays a bare call.
+export function buildConnectArgs(
+  endpoint: string,
+  headers?: Record<string, string>,
+  connectTimeoutMs?: number,
+): [string, { headers?: Record<string, string>; timeout?: number }] {
+  const options: { headers?: Record<string, string>; timeout?: number } = {};
+  if (headers && Object.keys(headers).length > 0) options.headers = headers;
+  if (typeof connectTimeoutMs === "number" && connectTimeoutMs > 0) {
+    options.timeout = connectTimeoutMs;
+  }
+  return [endpoint, options];
 }
 
 // ---------------------------------------------------------------------------
@@ -185,12 +214,15 @@ export function toErrorResult(
 }
 
 // ---------------------------------------------------------------------------
-// createCdpRunner — the real runner. Connects to an existing Chromium over
-// CDP (no second browser), injects axe-core, runs it, closes the page.
-// Dynamic import() inside the body keeps build/tests dependency-free.
+// createCdpRunner — the real runner. Attaches to a CDP-reachable Chromium
+// (local OR remote/managed, e.g. AWS Bedrock AgentCore Browser) over CDP (no
+// second browser), injects axe-core, runs it, closes the page. Dynamic
+// import() inside the body keeps build/tests dependency-free.
 
 export function createCdpRunner(config: RunnerConfig = {}): Runner {
   const cdpEndpoint = config.cdpEndpoint ?? "http://127.0.0.1:9222";
+  const cdpHeaders = config.cdpHeaders;
+  const connectTimeoutMs = config.connectTimeoutMs;
 
   return async function cdpRunner(ctx: RunnerContext): Promise<any> {
     // Imported lazily so module load never requires these packages.
@@ -201,7 +233,14 @@ export function createCdpRunner(config: RunnerConfig = {}): Runner {
     let browser: any;
     let page: any;
     try {
-      browser = await chromium.connectOverCDP(cdpEndpoint);
+      // endpoint + optional auth headers (the seam that lets this attach to a
+      // remote/authenticated browser, not just a local one).
+      const [endpoint, connectOptions] = buildConnectArgs(
+        cdpEndpoint,
+        cdpHeaders,
+        connectTimeoutMs,
+      );
+      browser = await chromium.connectOverCDP(endpoint, connectOptions);
     } catch (err) {
       throw toErrorResult(err, {
         code: "browser_unavailable",
