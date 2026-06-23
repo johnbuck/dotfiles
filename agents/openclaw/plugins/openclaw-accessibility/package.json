@@ -1,0 +1,15 @@
+{
+  "name": "openclaw-accessibility",
+  "version": "0.1.0",
+  "type": "module",
+  "openclaw": {
+    "extensions": ["./index.ts"]
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "axe-core": "^4.10.2",
+    "playwright-core": "^1.49.1"
+  }
+}

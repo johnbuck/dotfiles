@@ -1,0 +1,28 @@
+{
+  "id": "openclaw-accessibility",
+  "name": "OpenClaw Accessibility",
+  "description": "Registers the a11y_audit tool: runs axe-core against a page or raw HTML over the existing Chromium (via CDP) and returns structured WCAG findings { ok, standard, target, summary, violations }, failing open to { ok:false, error } so a bad audit can never break the agent turn. Ships two skills (accessibility, a11y-auditor) that drive the tool.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "cdpEndpoint": {
+        "type": "string",
+        "default": "http://127.0.0.1:9222",
+        "description": "CDP endpoint of the Chromium to connect to. Overridden at deploy time per host."
+      },
+      "defaultStandard": {
+        "type": "string",
+        "enum": ["WCAG2.0AA", "WCAG2.1AA", "WCAG2.1AAA", "best-practice"],
+        "default": "WCAG2.1AA",
+        "description": "axe standard used when a call omits `standard`."
+      },
+      "timeoutMs": {
+        "type": "number",
+        "default": 30000,
+        "description": "Max time for one audit before failing open with `timeout`."
+      }
+    }
+  },
+  "skills": ["./skills"]
+}
