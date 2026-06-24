@@ -49,7 +49,10 @@ axe-core) → `browser_evaluate` (run axe), then parses the returned JSON. Set
 `mcp.serverName` to the server your browser tools live under; `navigateTool` /
 `evaluateTool` default to `browser_navigate` / `browser_evaluate`. Raw HTML is
 audited by navigating to a `data:text/html,…` URL (MCP has no `setContent`).
-Needs neither `playwright-core` nor `bedrock-agentcore` installed.
+Needs neither `playwright-core` nor `bedrock-agentcore` installed. The injected
+axe payload is the **minified** build (`axe.min.js`, ~559 KB) — it travels over
+the MCP transport, never through the model's context, so it's a payload concern,
+not a token-cost one. (All providers inject the minified build.)
 
 **`cdp`** — attach to a standing CDP endpoint. `cdpEndpoint` accepts
 `http(s)://` (local) or `ws(s)://`, and `cdpHeaders` forwards any auth headers
