@@ -25,8 +25,10 @@ Don't run both paths on the same agent; choose one.
   `{ ok, standard, target, summary, violations }`, or `{ ok:false, error, message }`
   on failure — it never throws, so a failed audit can't break the agent turn.
 - **Skill `a11y-auditor`** — runs an audit by driving the agent's own browser
-  tools (loads axe-core from a CDN) and turns the violations into a prioritized
-  report. The path for MCP-only agents.
+  tools (loads axe-core from a CDN) and groups the violations into a WAVE-style
+  report (counts → grouped by rule with per-rule counts → contrast and
+  needs-review broken out). Inline by default, or **exported to a Markdown or CSV
+  file on request**. The path for MCP-only agents.
 - **Skill `accessibility`** — WCAG 2.1 AA guidance + correction table +
   `references/`; points at the auditor skill to measure.
 
