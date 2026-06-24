@@ -42,3 +42,21 @@ SOFTWARE.
 
 The authoritative license text is the LICENSE file in the upstream repository:
 https://github.com/jezweb/claude-skills
+
+------------------------------------------------------------------------------
+Third-party component: axe-core
+
+This plugin runs the axe-core accessibility engine. axe-core is not vendored
+into this repository — the a11y-auditor skill loads it from a CDN at runtime,
+and the a11y_audit tool pulls it via npm (declared dependency). It is used
+unmodified.
+
+  axe-core — Copyright (c) 2015-2024 Deque Systems, Inc.
+  https://github.com/dequelabs/axe-core
+  Licensed under the Mozilla Public License, Version 2.0 (MPL-2.0).
+
+MPL-2.0 is file-level copyleft and is compatible with this plugin's MIT license:
+the copyleft applies only to axe-core's own files (which remain MPL-2.0 and carry
+their notice in the axe.min.js header), not to this plugin's MIT-licensed code,
+because axe-core is used without modification. Full MPL-2.0 text:
+https://www.mozilla.org/MPL/2.0/
