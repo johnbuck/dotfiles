@@ -300,13 +300,27 @@ async function connectCdpSession(config: RunnerConfig, ctx: RunnerContext): Prom
 // runAxeInSession — provider-agnostic: open a page in the connected browser,
 // load the target honoring waitUntil, inject axe-core, run it. The caller owns
 // session.dispose() (teardown differs per provider).
+// getAxeSource — load the MINIFIED axe-core (axe.min.js, ~559 KB vs ~1.26 MB for
+// the unminified `axe.source`). Same engine; it is injected browser-side on every
+// audit, so the smaller payload matters for the MCP transport / page.evaluate. We
+// read the file directly (not `import axe`) and cache it. axe-core stays a normal
+// dependency so require.resolve finds it.
+let cachedAxeSource: string | undefined;
+async function getAxeSource(): Promise<string> {
+  if (cachedAxeSource !== undefined) return cachedAxeSource;
+  const { readFileSync } = await import("node:fs");
+  const { createRequire } = await import("node:module");
+  const req = createRequire(import.meta.url);
+  cachedAxeSource = readFileSync(req.resolve("axe-core/axe.min.js"), "utf8");
+  return cachedAxeSource;
+}
+
 async function runAxeInSession(
   session: BrowserSession,
   ctx: RunnerContext,
   waitUntil: WaitUntil,
 ): Promise<any> {
-  const axeModule = (await import("axe-core")) as any;
-  const axeSource: string = axeModule.source ?? axeModule.default?.source;
+  const axeSource = await getAxeSource();
   const { browser } = session;
   let page: any;
   try {
@@ -443,8 +457,7 @@ export function createMcpRunner(config: RunnerConfig = {}, api?: any): Runner {
         target: ctx.target,
       });
     }
-    const axeModule = (await import("axe-core")) as any;
-    const axeSource: string = axeModule.source ?? axeModule.default?.source;
+    const axeSource = await getAxeSource();
     return runAxeViaMcp(callTool, { serverName, navigateTool, evaluateTool }, ctx, axeSource);
     // No teardown: the MCP server owns the browser lifecycle.
   };
