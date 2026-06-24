@@ -6,10 +6,32 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {
+      "browserProvider": {
+        "type": "string",
+        "enum": ["cdp", "agentcore"],
+        "default": "cdp",
+        "description": "How the browser is supplied. 'cdp' (default) attaches to a standing CDP endpoint (cdpEndpoint/cdpHeaders). 'agentcore' starts a short-lived AWS Bedrock AgentCore browser session per audit. (If your agent only has browser MCP tools and no CDP endpoint, use the a11y-auditor skill instead of this tool.)"
+      },
+      "waitUntil": {
+        "type": "string",
+        "enum": ["load", "domcontentloaded", "networkidle", "commit"],
+        "default": "load",
+        "description": "Page navigation wait condition. Default 'load'. For SPA / managed browsers, 'networkidle' or 'domcontentloaded' avoids auditing a half-rendered page."
+      },
+      "agentcore": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Config for browserProvider: 'agentcore'. IAM auth comes from the agent's ambient AWS credentials — no keys here.",
+        "properties": {
+          "region": { "type": "string", "description": "AWS region of the AgentCore browser." },
+          "identifier": { "type": "string", "description": "Browser tool identifier to start a session against. Defaults to aws.browser.v1." },
+          "sessionTimeoutSeconds": { "type": "number", "description": "Upper-bound TTL for the per-audit session (started and stopped each audit)." }
+        }
+      },
       "cdpEndpoint": {
         "type": "string",
         "default": "http://127.0.0.1:9222",
-        "description": "CDP endpoint to attach to. http(s):// for a local browser, or ws(s):// for a remote/managed browser (e.g. AWS Bedrock AgentCore Browser). Set per agent at deploy."
+        "description": "CDP endpoint to attach to when browserProvider is 'cdp'. http(s):// for a local browser, or ws(s):// for a remote/managed browser. Set per agent at deploy."
       },
       "cdpHeaders": {
         "type": "object",

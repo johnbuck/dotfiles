@@ -1,39 +1,25 @@
 ---
 name: accessibility
-description: Build and verify WCAG 2.1 AA compliant interfaces — semantic HTML, ARIA, focus management, color contrast, keyboard navigation, form labels, and live regions. Use when implementing accessible UI, fixing screen-reader/keyboard issues, or measuring a page with the a11y_audit tool. Triggers include "focus outline missing", "aria-label required", "insufficient contrast".
+description: Build and verify WCAG 2.1 AA compliant interfaces — semantic HTML, ARIA, focus management, color contrast, keyboard navigation, form labels, and live regions. Use when implementing accessible UI, fixing screen-reader/keyboard issues, or auditing a page with the a11y-auditor skill. Triggers include "focus outline missing", "aria-label required", "insufficient contrast".
 ---
 
 # Web Accessibility (WCAG 2.1 AA)
 
 **Standards**: WCAG 2.1 Level AA · **Dependencies**: none (framework-agnostic)
 
-This skill carries both the *guidance* for writing accessible markup and the
-pointer to the `a11y_audit` tool that actually *measures* a page. When asked to
-do a full audit, spawn the `a11y-auditor` skill — it drives `a11y_audit` and
-interprets the violations.
+This skill carries the *guidance* for writing accessible markup. To actually
+*measure* a page, spawn the `a11y-auditor` skill — it drives your browser tools
+to run axe-core and returns a prioritized report.
 
 ---
 
-## Measure first: the a11y_audit tool
+## Measure first: the a11y-auditor skill
 
-This plugin registers a native `a11y_audit` tool. Use it to get objective,
-rule-based findings instead of eyeballing markup:
-
-```
-a11y_audit { "url": "https://example.com", "standard": "WCAG2.1AA" }
-a11y_audit { "html": "<button></button>", "standard": "WCAG2.1AAA" }
-```
-
-- Provide **exactly one** of `url` or `html`.
-- `standard` is one of `WCAG2.0AA`, `WCAG2.1AA` (default), `WCAG2.1AAA`,
-  `best-practice`.
-- Result: `{ ok, standard, target, summary: { violations, passes, incomplete }, violations: [...] }`.
-- On failure it returns `{ ok: false, error, message }` (codes: `invalid_input`,
-  `browser_unavailable`, `navigation_failed`, `audit_failed`, `timeout`) — it
-  never throws, so a failed audit cannot break the turn.
-
-For a structured report from those raw findings, hand off to the `a11y-auditor`
-skill.
+Don't eyeball markup — get objective, rule-based findings. Spawn the
+`a11y-auditor` skill with the target `url` and `standard` (`WCAG2.0AA`,
+`WCAG2.1AA` (default), `WCAG2.1AAA`, or `best-practice`). It navigates the page
+with your browser tools, loads and runs axe-core, and reports each violation
+with the rule, the offending element, and a fix.
 
 ---
 
