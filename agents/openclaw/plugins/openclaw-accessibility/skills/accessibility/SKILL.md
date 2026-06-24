@@ -1,6 +1,6 @@
 ---
 name: accessibility
-description: Build and verify WCAG 2.1 AA compliant interfaces — semantic HTML, ARIA, focus management, color contrast, keyboard navigation, form labels, and live regions. Use when implementing accessible UI, fixing screen-reader/keyboard issues, or auditing a page with the a11y-auditor skill. Triggers include "focus outline missing", "aria-label required", "insufficient contrast".
+description: Build and verify WCAG 2.1 AA / ADA / Section 508 compliant interfaces — semantic HTML, ARIA, focus management, color contrast, keyboard navigation, form labels, and live regions. Use when implementing accessible UI, fixing screen-reader/keyboard issues, or running an accessibility / ADA / Section 508 audit (via the a11y-auditor skill). Triggers include "focus outline missing", "aria-label required", "insufficient contrast".
 ---
 
 # Web Accessibility (WCAG 2.1 AA)
