@@ -8,19 +8,9 @@
     "properties": {
       "browserProvider": {
         "type": "string",
-        "enum": ["mcp", "cdp", "agentcore"],
-        "default": "mcp",
-        "description": "How the browser is supplied. 'mcp' (default) audits through the agent's existing browser MCP tools (no new connection). 'cdp' attaches to a standing endpoint (cdpEndpoint/cdpHeaders). 'agentcore' starts a short-lived AWS Bedrock AgentCore browser session per audit."
-      },
-      "mcp": {
-        "type": "object",
-        "additionalProperties": false,
-        "description": "Config for browserProvider: 'mcp'. Audits via api.runtime.callTool against the agent's existing browser MCP tools — reusing the open session, no new connection.",
-        "properties": {
-          "serverName": { "type": "string", "description": "MCP server name the browser tools are registered under (runtime-specific)." },
-          "navigateTool": { "type": "string", "description": "Navigate tool name. Default browser_navigate." },
-          "evaluateTool": { "type": "string", "description": "Evaluate tool name. Default browser_evaluate." }
-        }
+        "enum": ["cdp", "agentcore"],
+        "default": "cdp",
+        "description": "How the browser is supplied. 'cdp' (default) attaches to a standing CDP endpoint (cdpEndpoint/cdpHeaders). 'agentcore' starts a short-lived AWS Bedrock AgentCore browser session per audit. (If your agent only has browser MCP tools and no CDP endpoint, use the a11y-auditor skill instead of this tool.)"
       },
       "waitUntil": {
         "type": "string",

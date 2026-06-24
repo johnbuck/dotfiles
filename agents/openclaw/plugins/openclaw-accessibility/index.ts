@@ -18,7 +18,7 @@
 import { execute, createRunnerFromConfig } from "./lib/audit.ts";
 
 const DEFAULTS = {
-  browserProvider: "mcp",
+  browserProvider: "cdp",
   cdpEndpoint: "http://127.0.0.1:9222",
   waitUntil: "load",
   defaultStandard: "WCAG2.1AA",
@@ -37,24 +37,10 @@ export default {
     properties: {
       browserProvider: {
         type: "string",
-        enum: ["mcp", "cdp", "agentcore"],
+        enum: ["cdp", "agentcore"],
         default: DEFAULTS.browserProvider,
         description:
-          "How the browser is supplied. 'mcp' (default) audits through the agent's existing browser MCP tools (no new connection). 'cdp' attaches to a standing endpoint (cdpEndpoint/cdpHeaders). 'agentcore' starts a short-lived AWS Bedrock AgentCore browser session per audit.",
-      },
-      mcp: {
-        type: "object",
-        additionalProperties: false,
-        description:
-          "Config for browserProvider: 'mcp'. Audits via api.runtime.callTool against the agent's existing browser MCP tools — reusing the open session, no new connection.",
-        properties: {
-          serverName: {
-            type: "string",
-            description: "MCP server name the browser tools are registered under (runtime-specific).",
-          },
-          navigateTool: { type: "string", description: "Navigate tool name. Default browser_navigate." },
-          evaluateTool: { type: "string", description: "Evaluate tool name. Default browser_evaluate." },
-        },
+          "How the browser is supplied. 'cdp' (default) attaches to a standing CDP endpoint (cdpEndpoint/cdpHeaders). 'agentcore' starts a short-lived AWS Bedrock AgentCore browser session per audit. (If your agent only has browser MCP tools and no CDP endpoint, use the a11y-auditor skill instead of this tool.)",
       },
       waitUntil: {
         type: "string",
@@ -128,22 +114,17 @@ export default {
     const connectTimeoutMs = cfg.connectTimeoutMs ?? DEFAULTS.connectTimeoutMs;
     const waitUntil = cfg.waitUntil ?? DEFAULTS.waitUntil;
     const agentcore = cfg.agentcore ?? undefined;
-    const mcp = cfg.mcp ?? undefined;
     const defaultStandard = cfg.defaultStandard ?? DEFAULTS.defaultStandard;
     const timeoutMs = cfg.timeoutMs ?? DEFAULTS.timeoutMs;
 
-    const runner = createRunnerFromConfig(
-      {
-        browserProvider,
-        cdpEndpoint,
-        cdpHeaders,
-        connectTimeoutMs,
-        waitUntil,
-        agentcore,
-        mcp,
-      },
-      api,
-    );
+    const runner = createRunnerFromConfig({
+      browserProvider,
+      cdpEndpoint,
+      cdpHeaders,
+      connectTimeoutMs,
+      waitUntil,
+      agentcore,
+    });
 
     api.registerTool({
       name: "a11y_audit",
@@ -193,11 +174,7 @@ export default {
     });
 
     const providerDetail =
-      browserProvider === "agentcore"
-        ? `region=${agentcore?.region}`
-        : browserProvider === "mcp"
-          ? `server=${mcp?.serverName}`
-          : `cdp=${cdpEndpoint}`;
+      browserProvider === "agentcore" ? `region=${agentcore?.region}` : `cdp=${cdpEndpoint}`;
     api?.logger?.info?.(
       `openclaw-accessibility: registered a11y_audit (provider=${browserProvider}, ` +
         `${providerDetail}, waitUntil=${waitUntil}, default=${defaultStandard})`,
