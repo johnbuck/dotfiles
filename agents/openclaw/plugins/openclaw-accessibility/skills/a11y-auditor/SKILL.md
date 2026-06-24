@@ -1,13 +1,14 @@
 ---
 name: a11y-auditor
-description: Run an automated WCAG 2.1 AA accessibility audit of a page or component using the a11y_audit tool, then interpret axe-core violations into a prioritized remediation report with before/after fixes. Use for accessibility audits, screen-reader/keyboard checks, and color-contrast validation.
+description: Run an automated WCAG accessibility audit by driving the agent's own browser tools (browser_navigate + browser_evaluate) to load axe-core from a CDN and run it, then interpret the violations into a prioritized remediation report. Use for accessibility audits, screen-reader/keyboard checks, and color-contrast validation.
 ---
 
 # Accessibility Auditor
 
 You are an expert accessibility auditor specializing in WCAG 2.1 Level AA. Your
-job is to *measure* a page or component, then turn the raw findings into an
-actionable report.
+job is to *measure* a page with axe-core, then turn the raw findings into an
+actionable report. You drive your own browser tools to do it — there is no
+separate audit tool to call.
 
 ---
 
@@ -15,48 +16,74 @@ actionable report.
 
 ### 1. Identify scope
 
-What is being audited — a specific component, a whole page, or source files?
-Get the target `url` (or the `html` to test) and the desired `standard`
-(default `WCAG2.1AA`).
+Get the target `url` and the desired `standard` (default `WCAG2.1AA`). This skill
+audits a live URL. (To audit un-deployed markup, navigate to a
+`data:text/html,<encoded-html>` URL.)
 
-### 2. Run the measurement
+### 2. Run the measurement with your browser tools
 
-Call the `a11y_audit` tool registered by this plugin:
+Use your browser tools — `browser_navigate` then `browser_evaluate` (names may
+differ slightly on your runtime; use your equivalents):
 
-```
-a11y_audit { "url": "https://example.com", "standard": "WCAG2.1AA" }
-```
+1. **Navigate** to the page:
 
-or, for an inline fragment:
+   ```
+   browser_navigate { "url": "https://example.com" }
+   ```
 
-```
-a11y_audit { "html": "<form>…</form>", "standard": "WCAG2.1AA" }
-```
+2. **Evaluate** this script — it loads axe-core from a CDN (only once per page),
+   runs it, and returns the results as a JSON string. Pass it as your
+   `browser_evaluate` script/function argument:
 
-Provide exactly one of `url` or `html`. The tool returns:
+   ```js
+   async () => {
+     // Load axe-core from Cloudflare cdnjs (pinned + integrity-checked) if absent.
+     if (!window.axe) {
+       await new Promise((resolve, reject) => {
+         const s = document.createElement('script');
+         s.src = 'https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.10.2/axe.min.js';
+         s.integrity = 'sha384-3NYxCdpLKVHfNs2FHPtg3qqaYuhq85m4mMnlHBlN0JzSpKYKct2PMGYfsKGaKIj4';
+         s.crossOrigin = 'anonymous';
+         s.onload = resolve;
+         s.onerror = () => reject(new Error('axe-core failed to load from CDN'));
+         document.head.appendChild(s);
+       });
+     }
+     const result = await window.axe.run(document, {
+       runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] }
+     });
+     return JSON.stringify({
+       counts: {
+         violations: result.violations.length,
+         passes: result.passes.length,
+         incomplete: result.incomplete.length
+       },
+       violations: result.violations.map(v => ({
+         id: v.id, impact: v.impact, help: v.help, helpUrl: v.helpUrl,
+         nodes: v.nodes.map(n => ({ target: n.target, html: n.html }))
+       }))
+     });
+   };
+   ```
 
-```json
-{
-  "ok": true,
-  "standard": "WCAG2.1AA",
-  "target": "https://example.com",
-  "summary": { "violations": 2, "passes": 41, "incomplete": 1 },
-  "violations": [
-    {
-      "id": "button-name",
-      "impact": "critical",
-      "help": "Buttons must have discernible text",
-      "helpUrl": "https://dequeuniversity.com/rules/axe/4.x/button-name",
-      "nodes": [{ "target": ["button:nth-child(1)"], "html": "<button></button>" }]
-    }
-  ]
-}
-```
+   Set the `values` array from the requested standard:
 
-If `ok` is `false`, report the `error` code and `message` (e.g.
-`browser_unavailable`, `navigation_failed`, `timeout`) and stop — do not invent
-violations. The tool fails open, so a non-`ok` result means the audit could not
-run, not that the page is clean.
+   | Standard | `values` |
+   |---|---|
+   | `WCAG2.0AA` | `['wcag2a','wcag2aa']` |
+   | `WCAG2.1AA` (default) | `['wcag2a','wcag2aa','wcag21a','wcag21aa']` |
+   | `WCAG2.1AAA` | `['wcag2a','wcag2aa','wcag21a','wcag21aa','wcag2aaa','wcag21aaa']` |
+   | `best-practice` | `['best-practice']` |
+
+3. **Parse** the returned JSON string. That object is your measurement.
+
+**CDN fallback:** if the load fails, retry with jsDelivr — same file, same
+integrity hash: `https://cdn.jsdelivr.net/npm/axe-core@4.10.2/axe.min.js`.
+
+**If axe still won't load** (e.g. a strict Content-Security-Policy on the page
+blocks external scripts), say so plainly and report that the audit could not run
+— do **not** invent violations. A failed load is an audit failure, not a clean
+bill of health.
 
 ### 3. Interpret violations
 
@@ -108,10 +135,10 @@ meaningful link text, and that color is never the sole signal.
 
 ## Rules
 
-- Lead with the measurement: always run `a11y_audit` before asserting a verdict.
+- Lead with the measurement: navigate + run axe before asserting a verdict.
 - Be specific: every issue cites a rule id, the offending node, and a fix.
-- Honor the fail-open contract: a `{ ok: false }` result is an audit failure to
-  report, not a clean bill of health.
+- A failed axe load (CDN blocked, CSP, navigation error) is an audit failure to
+  report, not a clean result.
 - Be thorough but concise — actionable fixes with clear before/after code.
 
 ---
