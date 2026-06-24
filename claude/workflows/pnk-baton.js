@@ -33,6 +33,25 @@ const validate = A.validate ?? false
 const wantMerge = A.merge ?? true
 const maxRetries = A.maxRetries ?? 2
 
+// Target environment — REQUIRED, no default (every run must declare staging|prod).
+// Drives: which infra the validator/builder exercise, whether validation is mandatory
+// (prod => always, and must PASS to ship), and a signal the drift-checker enforces
+// (a prod target with no staging precedent is drift).
+const env = String(A.env || A.environment || '').trim().toLowerCase()
+if (env !== 'staging' && env !== 'prod') {
+  throw new Error("pnk-baton requires args.env = 'staging' or 'prod' (no default — every run must declare its target environment)")
+}
+const isProd = env === 'prod'
+const envNote = `\n\n=== TARGET ENVIRONMENT: ${env.toUpperCase()} ===\nThis run targets the ${env} environment. Exercise EVERY infrastructure- or data-touching test and validation against the ${env} target. NEVER read or mutate production data/infrastructure unless the target is explicitly prod.${isProd ? '\nThis is a PRODUCTION-targeted run: real-infrastructure validation is MANDATORY (it cannot be skipped or SKIPPED-away), and a change reaching prod with no prior staging pass is DRIFT — confirm a staging precedent exists before accepting.' : ''}`
+
+// Merge target depends on env: a staging run lands on the STAGING integration branch
+// (default 'staging', override via A.stagingBranch) with a --no-ff merge commit — NEVER on
+// main. A prod run lands on `base` (main) with the legacy fast-forward. This keeps the
+// staging-first flow automatic: validated work accumulates on `staging`, and only a
+// deliberate prod run (or manual promotion) advances main.
+const stagingBranch = String(A.stagingBranch || 'staging').trim()
+const mergeTarget = isProd ? base : stagingBranch
+
 // Drift / alignment gate inputs. `requireRoadmap` makes a missing roadmap a hard halt
 // (default: warn-and-continue). `northStar` / `roadmap` are optional path overrides; when
 // absent the drift-checker auto-discovers them by convention.
@@ -72,7 +91,7 @@ const specRel = spec.startsWith(repo + '/') ? spec.slice(repo.length + 1) : null
 const specInWorktree = specRel ? `${workdir}/${specRel}` : spec
 
 // Build agents work IN the isolated worktree; merge/cleanup act on the original repo.
-const fields = `Repository (your isolated worktree): ${workdir}\nBase branch: ${base}\nFeature branch: ${branch}\nSpec: ${spec}${remoteNote}`
+const fields = `Repository (your isolated worktree): ${workdir}\nBase branch: ${base}\nFeature branch: ${branch}\nSpec: ${spec}\nTarget environment: ${env.toUpperCase()}${remoteNote}`
 
 // ---- schemas ---------------------------------------------------------------
 const SETUP = {
@@ -197,7 +216,7 @@ const MERGE = {
 // ---- Setup: isolated worktree ----------------------------------------------
 phase('Setup')
 const setup = await agent(
-  `You are the pnk-baton SETUP step. Create an isolated git worktree so this run cannot collide with other concurrent pnk-baton runs.${remoteNote}\nOriginal repository: ${repo}\nBase branch: ${base}\nFeature branch: ${branch}\nWorktree path to create: ${workdir}\n\nSteps:\n1. If a worktree or directory already lingers at ${workdir} from a prior run, remove it first: \`git -C ${repo} worktree remove --force ${workdir}\` (ignore errors if absent), then \`rm -rf ${workdir}\` if the directory still exists, and \`git -C ${repo} worktree prune\`.\n2. Create the worktree on a fresh feature branch off ${base}: \`git -C ${repo} worktree add -B ${branch} ${workdir} ${base}\`.\n3. Verify \`git -C ${workdir} branch --show-current\` is ${branch} and the tree is clean.\nReport READY on success, or ERROR with the exact failure.`,
+  `You are the pnk-baton SETUP step. Create an isolated git worktree so this run cannot collide with other concurrent pnk-baton runs.${remoteNote}\nOriginal repository: ${repo}\nBase branch: ${base}\nFeature branch: ${branch}\nWorktree path to create: ${workdir}\n\nSteps:\n0. PRESERVE COMPLETED WORK — NEVER wipe a build. If branch ${branch} already exists, check \`git -C ${repo} rev-list --count ${base}..${branch}\`. If that count is > 0, the branch holds UNMERGED completed work from a prior run: do NOT remove the worktree, do NOT delete or force-reset the branch. Report ERROR with detail "lingering unmerged work on ${branch} (N commits ahead of ${base}); reuse/salvage it — do NOT rebuild from scratch" and STOP. (The caller will resume or merge that branch instead of starting over.)\n1. Only when ${branch} does NOT exist, or has ZERO commits ahead of ${base} (nothing to lose): clear any stale worktree at ${workdir} — \`git -C ${repo} worktree remove --force ${workdir}\` (ignore errors if absent), \`rm -rf ${workdir}\` if the directory remains, \`git -C ${repo} worktree prune\`.\n2. Create the worktree: if ${branch} exists (and step 0 allowed continuing), reuse it — \`git -C ${repo} worktree add ${workdir} ${branch}\`; otherwise create it fresh off ${base} — \`git -C ${repo} worktree add -B ${branch} ${workdir} ${base}\`. Never \`-B\` over an existing branch that has commits.\n3. Verify \`git -C ${workdir} branch --show-current\` is ${branch}.\nReport READY on success, or ERROR with the exact failure.`,
   { agentType: 'pnk-baton-integrator', phase: 'Setup', label: 'setup:worktree', schema: SETUP },
 )
 if (setup.status !== 'READY') {
@@ -212,8 +231,11 @@ const plan = await agent(
   { agentType: 'pnk-baton-planner', phase: 'Plan', schema: PLAN },
 )
 log(`Plan: ${plan.summary} (${plan.successCriteria.length} success criteria; validationNeeded=${plan.validationNeeded})`)
+log(`Target environment: ${env.toUpperCase()}${isProd ? ' — production: real-infra validation MANDATORY and must PASS to ship' : ''}`)
 
-const wantValidate = validate || plan.validationNeeded
+// Prod targets ALWAYS validate (and must PASS — see validationOk below); staging keeps
+// the validator optional (run if requested or the planner deems it needed).
+const wantValidate = isProd || validate || plan.validationNeeded
 
 // Format a drift verdict's findings for logs / feedback / the final report.
 const fmtDrift = (d) => (d.findings || [])
@@ -231,7 +253,7 @@ const isDrift = (d) => d.status === 'DRIFT' || blockingFindings(d).length > 0
 // ---- Align: pre-build drift gate (cheap; catch drift before any code) -------
 phase('Align')
 const align = await agent(
-  `You are the pnk-baton DRIFT-CHECKER in **pre-build** mode. No code exists yet — judge the SPEC and the PLANNER's design for alignment before any build tokens are spent.\n${fields}\n\n${driftNote}\n\nPlanner summary: ${plan.summary}\nPlanner approach:\n${plan.approach}\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}\n\nAudit alignment across project-north-star, baton-principles, how-we-do-things, spec, and roadmap. Locate the North Star and roadmap (report exactly what you found). Judge neutrally. DRIFT on genuine Critical/High/MEDIUM misalignment (scope creep, direction change, rule violation, off-roadmap work, any silent data loss / destructive action / skipped-staging risk) — but every blocking finding MUST cite concrete evidence (file/section + quoted intent) or be downgraded to Optional. ROADMAP-MISSING only when the absence of a roadmap is the sole blocking issue; otherwise ALIGNED. Do not over-block a correct, minimal, on-roadmap plan, and do not rubber-stamp drift.`,
+  `You are the pnk-baton DRIFT-CHECKER in **pre-build** mode. No code exists yet — judge the SPEC and the PLANNER's design for alignment before any build tokens are spent.\n${fields}\n\n${driftNote}${envNote}\n\nPlanner summary: ${plan.summary}\nPlanner approach:\n${plan.approach}\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}\n\nAudit alignment across project-north-star, baton-principles, how-we-do-things, spec, and roadmap. Locate the North Star and roadmap (report exactly what you found). Judge neutrally. DRIFT on genuine Critical/High/MEDIUM misalignment (scope creep, direction change, rule violation, off-roadmap work, any silent data loss / destructive action / skipped-staging risk) — but every blocking finding MUST cite concrete evidence (file/section + quoted intent) or be downgraded to Optional. ROADMAP-MISSING only when the absence of a roadmap is the sole blocking issue; otherwise ALIGNED. Do not over-block a correct, minimal, on-roadmap plan, and do not rubber-stamp drift.`,
   { agentType: 'pnk-baton-drift-checker', phase: 'Align', label: 'align:pre-build', schema: DRIFT },
 )
 log(`Align: ${align.status} (northStar=${align.northStarFound}, roadmap=${align.roadmapFound}); ${blockingFindings(align).length} blocking / ${(align.findings || []).length} total finding(s)`)
@@ -324,7 +346,7 @@ let accept = null
 if (shipped) {
   phase('Accept')
   accept = await agent(
-    `You are the pnk-baton DRIFT-CHECKER in **post-build** mode. The work is built, tested, and the adversarial reviewers PASSED. Perform user-acceptance-style alignment validation on the ACTUAL diff before it ships.\n${fields}\n\n${driftNote}\n\nRead the branch's own change: \`git -C ${workdir} diff $(git -C ${workdir} merge-base ${base} HEAD)..HEAD\`. ${base} is integrated, so incoming ${base} commits/deletions are NOT this branch's change — never judge them.\n\nSpec being implemented: ${spec}\nPlanner summary: ${plan.summary}\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}\n\nConfirm the SHIPPED work still aligns: did it drift from the plan/spec during build? Does the completed change actually deliver a roadmap item (acceptance), or solve something adjacent? Did it silently lose data, take a destructive/irreversible action, or skip staging? Honor project-north-star, baton-principles, how-we-do-things, spec, roadmap. Judge neutrally. DRIFT on genuine Critical/High/MEDIUM misalignment, every blocking finding citing concrete evidence (or downgrade to Optional); ROADMAP-MISSING only when a missing roadmap is the sole blocking issue; otherwise ALIGNED. Do not over-block correct, minimal, on-roadmap work, and do not rubber-stamp drift.`,
+    `You are the pnk-baton DRIFT-CHECKER in **post-build** mode. The work is built, tested, and the adversarial reviewers PASSED. Perform user-acceptance-style alignment validation on the ACTUAL diff before it ships.\n${fields}\n\n${driftNote}${envNote}\n\nRead the branch's own change: \`git -C ${workdir} diff $(git -C ${workdir} merge-base ${base} HEAD)..HEAD\`. ${base} is integrated, so incoming ${base} commits/deletions are NOT this branch's change — never judge them.\n\nSpec being implemented: ${spec}\nPlanner summary: ${plan.summary}\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}\n\nConfirm the SHIPPED work still aligns: did it drift from the plan/spec during build? Does the completed change actually deliver a roadmap item (acceptance), or solve something adjacent? Did it silently lose data, take a destructive/irreversible action, or skip staging? Honor project-north-star, baton-principles, how-we-do-things, spec, roadmap. Judge neutrally. DRIFT on genuine Critical/High/MEDIUM misalignment, every blocking finding citing concrete evidence (or downgrade to Optional); ROADMAP-MISSING only when a missing roadmap is the sole blocking issue; otherwise ALIGNED. Do not over-block correct, minimal, on-roadmap work, and do not rubber-stamp drift.`,
     { agentType: 'pnk-baton-drift-checker', phase: 'Accept', label: 'accept:post-build', schema: DRIFT },
   )
   log(`Accept: ${accept.status} (roadmap=${accept.roadmapFound}); ${blockingFindings(accept).length} blocking / ${(accept.findings || []).length} total finding(s)`)
@@ -344,7 +366,7 @@ let validation = null
 if (shipped && wantValidate) {
   phase('Validate')
   validation = await agent(
-    `You are the pnk-baton VALIDATOR (pre-merge pass).\n${fields}\n\nRun the feature end-to-end against real infrastructure on ${branch}. Judge output against the success criteria — wrong data with exit 0 is a FAIL. If the infrastructure is genuinely unavailable, report SKIPPED with the reason; do not fake a pass.\n\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}`,
+    `You are the pnk-baton VALIDATOR (pre-merge pass).\n${fields}${envNote}\n\nRun the feature end-to-end against the ${env} infrastructure on ${branch}. Judge output against the success criteria — wrong data with exit 0 is a FAIL.${isProd ? ' This is a PRODUCTION-targeted run: validation is MANDATORY — SKIPPED is NOT acceptable (a SKIP blocks the ship). Only PASS clears it.' : ' If the infrastructure is genuinely unavailable, report SKIPPED with the reason; do not fake a pass.'}\n\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}`,
     { agentType: 'pnk-baton-validator', phase: 'Validate', schema: VALID },
   )
   log(`Validation: ${validation.status}`)
@@ -371,25 +393,35 @@ if (shipped) {
 }
 
 // ---- Merge (default on; local fast-forward only, never push) ---------------
-const validationOk = !validation || validation.status === 'PASS'
+// Staging: OK to ship unless validation explicitly FAILed (SKIPPED/absent is tolerated).
+// Prod: validation is MANDATORY and must be PASS — a SKIPPED/absent validation blocks the ship.
+const prodValidationMissing = isProd && !(validation && validation.status === 'PASS')
+const validationOk = isProd
+  ? (validation && validation.status === 'PASS')
+  : (!validation || validation.status === 'PASS')
 let merge = null
 if (shipped && wantMerge && validationOk) {
   phase('Merge')
+  const mergePrompt = isProd
+    ? `You are performing the pnk-baton MERGE (PROD target). All gates passed. Land ${branch} onto ${base} with a LOCAL fast-forward in the ORIGINAL repository, then clean up the per-run worktree. Do NOT push to any remote.${remoteNote}\nOriginal repository: ${repo}\nBase branch: ${base}\nFeature branch: ${branch}\nPer-run worktree: ${workdir}\n\n1. In ${repo}, confirm ${base} is an ancestor of ${branch}: \`git -C ${repo} merge-base --is-ancestor ${base} ${branch}\`.\n2. If YES, fast-forward base to the branch tip:\n   - if ${base} is the checked-out branch of ${repo}: \`git -C ${repo} merge --ff-only ${branch}\`;\n   - if ${base} is checked out in another worktree: \`git -C ${repo} update-ref refs/heads/${base} ${branch}\`.\n   Report MERGED with the new ${base} commit sha.\n3. If ${base} is NOT an ancestor (it moved): do NOT force, report NOT_FF and stop.\n4. On MERGED only, remove the per-run worktree: \`git -C ${repo} worktree remove --force ${workdir} && git -C ${repo} worktree prune\`.\nNever push. Never --force a merge. Never rebase. Never modify code or tests.`
+    : `You are performing the pnk-baton STAGING MERGE. All gates passed and this is an --env staging run, so land ${branch} on the STAGING integration branch '${stagingBranch}' — NOT on ${base}/main. Do NOT push to any remote, and NEVER touch ${base}/main.${remoteNote}\nOriginal repository: ${repo}\nFeature branch: ${branch}\nStaging branch: ${stagingBranch}\nPer-run feature worktree: ${workdir}\n\n1. Ensure the staging branch exists: if \`git -C ${repo} show-ref --verify --quiet refs/heads/${stagingBranch}\` fails, create it off ${base}: \`git -C ${repo} branch ${stagingBranch} ${base}\`.\n2. A --no-ff merge needs a working tree. Find an existing worktree for ${stagingBranch} in \`git -C ${repo} worktree list\` and use it; otherwise add a temporary one: \`git -C ${repo} worktree add /tmp/pnk-staging-merge ${stagingBranch}\` (reuse if it already exists).\n3. In that staging worktree, merge the feature with an explicit merge commit: \`git -C <staging-worktree> merge --no-ff ${branch} -m "merge: ${branch} into ${stagingBranch} (staging-validated, env=staging)"\`. If it CONFLICTS: \`git -C <staging-worktree> merge --abort\` and report NOT_FF with the conflicting paths in detail; do NOT resolve.\n4. On a clean merge report MERGED with the new ${stagingBranch} commit sha (as baseCommit).\n5. On MERGED only, remove the per-run FEATURE worktree: \`git -C ${repo} worktree remove --force ${workdir} && git -C ${repo} worktree prune\`. LEAVE the ${stagingBranch} branch and its worktree in place.\nNever push. Never --force a merge. Never rebase. Never modify code or tests. Never advance ${base}/main.`
   merge = await agent(
-    `You are performing the pnk-baton MERGE. All gates passed. Land ${branch} onto ${base} with a LOCAL fast-forward in the ORIGINAL repository, then clean up the per-run worktree. Do NOT push to any remote.${remoteNote}\nOriginal repository: ${repo}\nBase branch: ${base}\nFeature branch: ${branch}\nPer-run worktree: ${workdir}\n\n1. In ${repo}, confirm ${base} is an ancestor of ${branch}: \`git -C ${repo} merge-base --is-ancestor ${base} ${branch}\`.\n2. If YES, fast-forward base to the branch tip:\n   - if ${base} is the checked-out branch of ${repo}: \`git -C ${repo} merge --ff-only ${branch}\`;\n   - if ${base} is checked out in another worktree: \`git -C ${repo} update-ref refs/heads/${base} ${branch}\`.\n   Report MERGED with the new ${base} commit sha.\n3. If ${base} is NOT an ancestor (it moved): do NOT force, report NOT_FF and stop.\n4. On MERGED only, remove the per-run worktree: \`git -C ${repo} worktree remove --force ${workdir} && git -C ${repo} worktree prune\`.\nNever push. Never --force a merge. Never rebase. Never modify code or tests.`,
+    mergePrompt,
     { agentType: 'pnk-baton-merger', phase: 'Merge', label: 'merge', schema: MERGE },
   )
-  log(`Merge: ${merge.status}${merge.baseCommit ? ' @ ' + merge.baseCommit : ''}`)
+  log(`Merge: ${merge.status}${merge.baseCommit ? ` -> ${mergeTarget} @ ${merge.baseCommit}` : ''}`)
 }
 
 // ---- Report ----------------------------------------------------------------
 const merged = merge && merge.status === 'MERGED'
 return {
-  status: validation && validation.status === 'FAIL' ? 'VALIDATION-FAILED'
+  status: (validation && validation.status === 'FAIL') || prodValidationMissing ? 'VALIDATION-FAILED'
     : merged ? 'MERGED'
     : 'READY',
   branch,
   base,
+  environment: env,
+  mergeTarget,
   worktree: merged ? '(removed after merge)' : workdir,
   plan,
   tests: { files: tests.testFiles, run: tests.runCommand },
@@ -406,8 +438,14 @@ return {
   merge: merge ? merge.status : (!wantMerge ? 'disabled' : (!validationOk ? 'skipped (validation not PASS)' : 'skipped')),
   mergedCommit: merged ? merge.baseCommit : undefined,
   note: merged
-    ? `Merged ${branch} into ${base} locally (${merge.baseCommit}); worktree cleaned up. Push when ready: git push origin ${base}.`
+    ? (isProd
+        ? `Merged ${branch} into ${base} (main) locally (${merge.baseCommit}); worktree cleaned up. Push when ready: git push origin ${base}.`
+        : `Merged ${branch} into the STAGING branch '${stagingBranch}' locally (${merge.baseCommit}); main NOT touched, feature worktree cleaned up. Push when ready: git push origin ${stagingBranch}. Promote to main in a separate deliberate step.`)
     : (merge && merge.status === 'NOT_FF')
-      ? `${base} moved; not fast-forwardable. Re-run pnk-baton (it will re-integrate) or integrate+merge manually from worktree ${workdir}.`
-      : `Branch ${branch} is built, tested, and reviewed in worktree ${workdir}. Merge: git -C ${repo} merge ${branch}.`,
+      ? (isProd
+          ? `${base} moved; not fast-forwardable. Re-run pnk-baton (it will re-integrate) or integrate+merge manually from worktree ${workdir}.`
+          : `Staging merge into '${stagingBranch}' conflicted; aborted. Branch left intact at ${workdir} — reconcile '${stagingBranch}' manually.`)
+      : prodValidationMissing
+        ? `PROD target: real-infrastructure validation did not PASS (status: ${validation ? validation.status : 'unavailable'}). A prod-targeted change must pass validation before it can ship — not merged; branch left intact at ${workdir}. Re-run after validation passes.`
+        : `Branch ${branch} is built, tested, and reviewed (${env}) in worktree ${workdir}. Merge target would be ${mergeTarget}: git -C ${repo} merge ${branch}.`,
 }
