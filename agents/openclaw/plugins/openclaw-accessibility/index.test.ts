@@ -189,7 +189,7 @@ test("resolveWaitUntil validates and defaults", async () => {
 
 test("createRunnerFromConfig selects a provider", async () => {
   const { createRunnerFromConfig } = await loadAudit();
-  assert.equal(typeof createRunnerFromConfig(), "function", "default (mcp) runner");
+  assert.equal(typeof createRunnerFromConfig(), "function", "default (cdp) runner");
   assert.equal(typeof createRunnerFromConfig({ browserProvider: "cdp" }), "function", "cdp runner");
   assert.equal(
     typeof createRunnerFromConfig({ browserProvider: "agentcore", agentcore: { region: "us-east-1" } }),
@@ -212,92 +212,6 @@ test("agentcore provider fails open on missing region", async () => {
   assert.equal(r.error, "browser_unavailable");
 });
 
-// ---------------------------------------------------------------------------
-// Criterion: mcp-dispatch-sequence
-//   runAxeViaMcp drives the existing browser MCP tools in order — navigate,
-//   inject axe (script = source), run axe (script = window.axe.run) — and parses
-//   the returned JSON string. Uses a fake callTool; no browser, no axe-core.
-
-test("runAxeViaMcp drives navigate + inject + run and parses JSON", async () => {
-  const { runAxeViaMcp } = await loadAudit();
-  const calls: any[] = [];
-  const axeJson = JSON.stringify({
-    violations: [{ id: "button-name", impact: "critical", help: "h", helpUrl: "u", nodes: [] }],
-    passes: [],
-    incomplete: [],
-  });
-  const callTool = async (server: string, tool: string, input: any) => {
-    calls.push({ server, tool, input });
-    return tool === "browser_evaluate" && /window\.axe\.run/.test(input.script) ? axeJson : "";
-  };
-  const ctx = {
-    url: "https://example.com",
-    standard: "WCAG2.1AA",
-    target: "https://example.com",
-    axeOptions: { runOnly: { type: "tag", values: ["wcag2a"] } },
-  };
-  const raw = await runAxeViaMcp(
-    callTool,
-    { serverName: "browser", navigateTool: "browser_navigate", evaluateTool: "browser_evaluate" },
-    ctx,
-    "AXE_SOURCE_STR",
-  );
-  assert.equal(calls[0].tool, "browser_navigate");
-  assert.deepEqual(calls[0].input, { url: "https://example.com" });
-  assert.equal(calls[1].tool, "browser_evaluate");
-  assert.equal(calls[1].input.script, "AXE_SOURCE_STR", "axe source injected verbatim");
-  assert.match(calls[2].input.script, /window\.axe\.run/, "second eval runs axe");
-  assert.equal(raw.violations[0].id, "button-name", "JSON-string result is parsed");
-});
-
-test("runAxeViaMcp audits html via a data: URL (no setContent)", async () => {
-  const { runAxeViaMcp } = await loadAudit();
-  let navUrl = "";
-  const callTool = async (_s: string, t: string, i: any) => {
-    if (t === "browser_navigate") navUrl = i.url;
-    return "{}";
-  };
-  const ctx = {
-    html: "<button></button>",
-    standard: "WCAG2.1AA",
-    target: "<inline html>",
-    axeOptions: { runOnly: { type: "tag", values: [] } },
-  };
-  await runAxeViaMcp(
-    callTool,
-    { serverName: "b", navigateTool: "browser_navigate", evaluateTool: "browser_evaluate" },
-    ctx,
-    "AXE",
-  );
-  assert.match(navUrl, /^data:text\/html/, "html audited via data: URL");
-  assert.match(navUrl, /%3Cbutton/, "html is URL-encoded into the data URL");
-});
-
-test("extractAxeJson unwraps strings and MCP content arrays", async () => {
-  const { extractAxeJson } = await loadAudit();
-  assert.deepEqual(extractAxeJson('{"a":1}'), { a: 1 }, "plain JSON string");
-  assert.deepEqual(extractAxeJson({ content: [{ type: "text", text: '{"b":2}' }] }), { b: 2 }, "MCP content array");
-  assert.deepEqual(extractAxeJson({ text: '{"c":3}' }), { c: 3 }, "{ text }");
-  assert.deepEqual(extractAxeJson({ d: 4 }), { d: 4 }, "object passthrough");
-});
-
-test("mcp provider fails open without a callTool handle", async () => {
-  const { execute, createRunnerFromConfig } = await loadAudit();
-  // default provider is mcp; api has no runtime.callTool
-  const runner = createRunnerFromConfig({ mcp: { serverName: "browser" } }, { logger: {} });
-  const r = await execute({ url: "https://example.com" }, runner);
-  assert.equal(r.ok, false);
-  assert.equal(r.error, "browser_unavailable");
-});
-
-test("mcp provider fails open without serverName", async () => {
-  const { execute, createRunnerFromConfig } = await loadAudit();
-  const fakeApi = { runtime: { callTool: async () => "" } };
-  const runner = createRunnerFromConfig({ browserProvider: "mcp" }, fakeApi); // no mcp.serverName
-  const r = await execute({ url: "https://example.com" }, runner);
-  assert.equal(r.ok, false);
-  assert.equal(r.error, "browser_unavailable");
-});
 
 // ---------------------------------------------------------------------------
 // Criterion: shapes-violations

@@ -1,20 +1,34 @@
 # openclaw-accessibility
 
-An OpenClaw plugin that adds an accessibility-audit capability.
+An OpenClaw plugin that checks web pages for accessibility problems
+([axe-core](https://github.com/dequelabs/axe-core) against WCAG).
+
+## Which do I use? (start here)
+
+There are **two ways** to run an audit. Pick by the kind of browser your agent has:
+
+- **Your agent only has browser MCP tools** (e.g. AWS AgentCore reached via MCP),
+  no CDP endpoint → **use the `a11y-auditor` skill.** The agent drives its own
+  `browser_navigate` / `browser_evaluate`. Nothing to configure.
+- **You have a CDP browser** (a local/headless Chromium, or an AgentCore session)
+  → **use the `a11y_audit` tool** and point its provider at that browser.
+
+Why two: a plugin tool cannot call another tool on OpenClaw (verified), so the
+tool can't reuse the browser MCP — that case is the skill's job, not the tool's.
+Don't run both paths on the same agent; choose one.
 
 ## What it is
 
-- **Tool `a11y_audit`** — audits a web page (`url`) or a raw HTML string
-  (`html`) against a WCAG standard using [axe-core](https://github.com/dequelabs/axe-core).
-  How it reaches a browser is a configurable **provider** (default `mcp` — reuse
-  the agent's existing browser MCP tools; also `cdp` and `agentcore`). Returns
-  `{ ok, standard, target, summary, violations }`, or a structured
-  `{ ok: false, error, message }` on failure. It **never throws out of the
-  hook** — a failed audit cannot break the agent turn.
-- **Skill `accessibility`** — WCAG 2.1 AA guidance plus the correction table;
-  points at the six `references/` deep-dive docs and the auditor skill.
-- **Skill `a11y-auditor`** — drives `a11y_audit` and turns axe violations into a
-  prioritized remediation report.
+- **Tool `a11y_audit`** — audits a `url` (or raw `html`) against a WCAG standard
+  with axe-core, via a configurable **provider**: `cdp` (default — a standing CDP
+  browser) or `agentcore` (per-audit AWS session). Returns
+  `{ ok, standard, target, summary, violations }`, or `{ ok:false, error, message }`
+  on failure — it never throws, so a failed audit can't break the agent turn.
+- **Skill `a11y-auditor`** — runs an audit by driving the agent's own browser
+  tools (loads axe-core from a CDN) and turns the violations into a prioritized
+  report. The path for MCP-only agents.
+- **Skill `accessibility`** — WCAG 2.1 AA guidance + correction table +
+  `references/`; points at the auditor skill to measure.
 
 ## Input
 
@@ -27,11 +41,12 @@ Provide exactly one of `url` / `html`. `standard` ∈ `WCAG2.0AA`, `WCAG2.1AA`
 
 ## Configuration (`configSchema`)
 
+These configure the **tool** only (the skill needs no config).
+
 | Key | Default | Description |
 |-----|---------|-------------|
-| `browserProvider` | `mcp` | How the browser is supplied: `mcp` (reuse the agent's existing browser MCP tools), `cdp` (attach to a standing endpoint), or `agentcore` (per-audit AWS Bedrock AgentCore session). |
-| `mcp` | _(none)_ | (`mcp` provider) `{ serverName, navigateTool?, evaluateTool? }`. The MCP server name your browser tools are registered under; tool names default to `browser_navigate` / `browser_evaluate`. |
-| `waitUntil` | `load` | (`cdp`/`agentcore`) Page navigation wait condition: `load` / `domcontentloaded` / `networkidle` / `commit`. |
+| `browserProvider` | `cdp` | How the browser is supplied: `cdp` (attach to a standing endpoint) or `agentcore` (per-audit AWS Bedrock AgentCore session). |
+| `waitUntil` | `load` | Page navigation wait condition: `load` / `domcontentloaded` / `networkidle` / `commit`. |
 | `cdpEndpoint` | `http://127.0.0.1:9222` | (`cdp` provider) CDP endpoint. `http(s)://` (local) or `ws(s)://` (remote/managed). |
 | `cdpHeaders` | _(none)_ | (`cdp` provider) Optional headers for the CDP connect handshake, for a browser that authenticates the socket. |
 | `connectTimeoutMs` | `30000` | Timeout for the CDP connect handshake. |
@@ -39,22 +54,11 @@ Provide exactly one of `url` / `html`. `standard` ∈ `WCAG2.0AA`, `WCAG2.1AA`
 | `defaultStandard` | `WCAG2.1AA` | Standard used when a call omits `standard`. |
 | `timeoutMs` | `30000` | Max time for one audit before failing open with `timeout`. |
 
-### Browser providers
+### Tool providers
 
-**`mcp` (default)** — audit through the agent's **existing** browser MCP tools,
-reusing the runtime's open MCP session: no CDP socket, no SDK, no per-audit
-session, **no new connection**. The runner calls `api.runtime.callTool(serverName,
-toolName, input)` to drive `browser_navigate` → `browser_evaluate` (inject
-axe-core) → `browser_evaluate` (run axe), then parses the returned JSON. Set
-`mcp.serverName` to the server your browser tools live under; `navigateTool` /
-`evaluateTool` default to `browser_navigate` / `browser_evaluate`. Raw HTML is
-audited by navigating to a `data:text/html,…` URL (MCP has no `setContent`).
-Needs neither `playwright-core` nor `bedrock-agentcore` installed. The injected
-axe payload is the **minified** build (`axe.min.js`, ~559 KB) — it travels over
-the MCP transport, never through the model's context, so it's a payload concern,
-not a token-cost one. (All providers inject the minified build.)
+(Both inject the **minified** axe build, `axe.min.js`, via `page.evaluate`.)
 
-**`cdp`** — attach to a standing CDP endpoint. `cdpEndpoint` accepts
+**`cdp` (default)** — attach to a standing CDP endpoint. `cdpEndpoint` accepts
 `http(s)://` (local) or `ws(s)://`, and `cdpHeaders` forwards any auth headers
 the socket needs. The plugin only passes headers through; it does not mint AWS
 SigV4. Note: statically-configured SigV4 headers are short-lived and will expire
