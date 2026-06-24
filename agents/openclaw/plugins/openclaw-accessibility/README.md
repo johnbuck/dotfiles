@@ -30,6 +30,25 @@ Don't run both paths on the same agent; choose one.
 - **Skill `accessibility`** — WCAG 2.1 AA guidance + correction table +
   `references/`; points at the auditor skill to measure.
 
+## Triggers (what activates the skills)
+
+The agent picks up these skills from how the request is phrased:
+
+**`a11y-auditor`** (run an audit) — triggers on:
+- "accessibility audit" / "audit this page for accessibility"
+- "ADA audit" / "ADA compliance check"
+- "Section 508 audit" / "508 compliance"
+- "WCAG audit" / "WCAG compliance check"
+- "screen-reader check", "keyboard navigation check", "color-contrast check"
+
+**`accessibility`** (build/fix accessible UI) — triggers on:
+- "make this accessible", "fix the accessibility of…", implementing accessible components
+- "focus outline missing", "aria-label required", "insufficient contrast"
+
+Note: **ADA** and **Section 508** are assessed against **WCAG**, so those
+requests run the same WCAG audit — automated (axe covers ~30–50% of WCAG), and
+reported as informing conformance, not as a legal certification.
+
 ## Input
 
 ```json
