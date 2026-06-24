@@ -44,6 +44,14 @@ if (env !== 'staging' && env !== 'prod') {
 const isProd = env === 'prod'
 const envNote = `\n\n=== TARGET ENVIRONMENT: ${env.toUpperCase()} ===\nThis run targets the ${env} environment. Exercise EVERY infrastructure- or data-touching test and validation against the ${env} target. NEVER read or mutate production data/infrastructure unless the target is explicitly prod.${isProd ? '\nThis is a PRODUCTION-targeted run: real-infrastructure validation is MANDATORY (it cannot be skipped or SKIPPED-away), and a change reaching prod with no prior staging pass is DRIFT — confirm a staging precedent exists before accepting.' : ''}`
 
+// Merge target depends on env: a staging run lands on the STAGING integration branch
+// (default 'staging', override via A.stagingBranch) with a --no-ff merge commit — NEVER on
+// main. A prod run lands on `base` (main) with the legacy fast-forward. This keeps the
+// staging-first flow automatic: validated work accumulates on `staging`, and only a
+// deliberate prod run (or manual promotion) advances main.
+const stagingBranch = String(A.stagingBranch || 'staging').trim()
+const mergeTarget = isProd ? base : stagingBranch
+
 // Drift / alignment gate inputs. `requireRoadmap` makes a missing roadmap a hard halt
 // (default: warn-and-continue). `northStar` / `roadmap` are optional path overrides; when
 // absent the drift-checker auto-discovers them by convention.
@@ -394,11 +402,14 @@ const validationOk = isProd
 let merge = null
 if (shipped && wantMerge && validationOk) {
   phase('Merge')
+  const mergePrompt = isProd
+    ? `You are performing the pnk-baton MERGE (PROD target). All gates passed. Land ${branch} onto ${base} with a LOCAL fast-forward in the ORIGINAL repository, then clean up the per-run worktree. Do NOT push to any remote.${remoteNote}\nOriginal repository: ${repo}\nBase branch: ${base}\nFeature branch: ${branch}\nPer-run worktree: ${workdir}\n\n1. In ${repo}, confirm ${base} is an ancestor of ${branch}: \`git -C ${repo} merge-base --is-ancestor ${base} ${branch}\`.\n2. If YES, fast-forward base to the branch tip:\n   - if ${base} is the checked-out branch of ${repo}: \`git -C ${repo} merge --ff-only ${branch}\`;\n   - if ${base} is checked out in another worktree: \`git -C ${repo} update-ref refs/heads/${base} ${branch}\`.\n   Report MERGED with the new ${base} commit sha.\n3. If ${base} is NOT an ancestor (it moved): do NOT force, report NOT_FF and stop.\n4. On MERGED only, remove the per-run worktree: \`git -C ${repo} worktree remove --force ${workdir} && git -C ${repo} worktree prune\`.\nNever push. Never --force a merge. Never rebase. Never modify code or tests.`
+    : `You are performing the pnk-baton STAGING MERGE. All gates passed and this is an --env staging run, so land ${branch} on the STAGING integration branch '${stagingBranch}' — NOT on ${base}/main. Do NOT push to any remote, and NEVER touch ${base}/main.${remoteNote}\nOriginal repository: ${repo}\nFeature branch: ${branch}\nStaging branch: ${stagingBranch}\nPer-run feature worktree: ${workdir}\n\n1. Ensure the staging branch exists: if \`git -C ${repo} show-ref --verify --quiet refs/heads/${stagingBranch}\` fails, create it off ${base}: \`git -C ${repo} branch ${stagingBranch} ${base}\`.\n2. A --no-ff merge needs a working tree. Find an existing worktree for ${stagingBranch} in \`git -C ${repo} worktree list\` and use it; otherwise add a temporary one: \`git -C ${repo} worktree add /tmp/pnk-staging-merge ${stagingBranch}\` (reuse if it already exists).\n3. In that staging worktree, merge the feature with an explicit merge commit: \`git -C <staging-worktree> merge --no-ff ${branch} -m "merge: ${branch} into ${stagingBranch} (staging-validated, env=staging)"\`. If it CONFLICTS: \`git -C <staging-worktree> merge --abort\` and report NOT_FF with the conflicting paths in detail; do NOT resolve.\n4. On a clean merge report MERGED with the new ${stagingBranch} commit sha (as baseCommit).\n5. On MERGED only, remove the per-run FEATURE worktree: \`git -C ${repo} worktree remove --force ${workdir} && git -C ${repo} worktree prune\`. LEAVE the ${stagingBranch} branch and its worktree in place.\nNever push. Never --force a merge. Never rebase. Never modify code or tests. Never advance ${base}/main.`
   merge = await agent(
-    `You are performing the pnk-baton MERGE. All gates passed. Land ${branch} onto ${base} with a LOCAL fast-forward in the ORIGINAL repository, then clean up the per-run worktree. Do NOT push to any remote.${remoteNote}\nOriginal repository: ${repo}\nBase branch: ${base}\nFeature branch: ${branch}\nPer-run worktree: ${workdir}\n\n1. In ${repo}, confirm ${base} is an ancestor of ${branch}: \`git -C ${repo} merge-base --is-ancestor ${base} ${branch}\`.\n2. If YES, fast-forward base to the branch tip:\n   - if ${base} is the checked-out branch of ${repo}: \`git -C ${repo} merge --ff-only ${branch}\`;\n   - if ${base} is checked out in another worktree: \`git -C ${repo} update-ref refs/heads/${base} ${branch}\`.\n   Report MERGED with the new ${base} commit sha.\n3. If ${base} is NOT an ancestor (it moved): do NOT force, report NOT_FF and stop.\n4. On MERGED only, remove the per-run worktree: \`git -C ${repo} worktree remove --force ${workdir} && git -C ${repo} worktree prune\`.\nNever push. Never --force a merge. Never rebase. Never modify code or tests.`,
+    mergePrompt,
     { agentType: 'pnk-baton-merger', phase: 'Merge', label: 'merge', schema: MERGE },
   )
-  log(`Merge: ${merge.status}${merge.baseCommit ? ' @ ' + merge.baseCommit : ''}`)
+  log(`Merge: ${merge.status}${merge.baseCommit ? ` -> ${mergeTarget} @ ${merge.baseCommit}` : ''}`)
 }
 
 // ---- Report ----------------------------------------------------------------
@@ -410,6 +421,7 @@ return {
   branch,
   base,
   environment: env,
+  mergeTarget,
   worktree: merged ? '(removed after merge)' : workdir,
   plan,
   tests: { files: tests.testFiles, run: tests.runCommand },
@@ -426,10 +438,14 @@ return {
   merge: merge ? merge.status : (!wantMerge ? 'disabled' : (!validationOk ? 'skipped (validation not PASS)' : 'skipped')),
   mergedCommit: merged ? merge.baseCommit : undefined,
   note: merged
-    ? `Merged ${branch} into ${base} locally (${merge.baseCommit}); worktree cleaned up. Push when ready: git push origin ${base}.`
+    ? (isProd
+        ? `Merged ${branch} into ${base} (main) locally (${merge.baseCommit}); worktree cleaned up. Push when ready: git push origin ${base}.`
+        : `Merged ${branch} into the STAGING branch '${stagingBranch}' locally (${merge.baseCommit}); main NOT touched, feature worktree cleaned up. Push when ready: git push origin ${stagingBranch}. Promote to main in a separate deliberate step.`)
     : (merge && merge.status === 'NOT_FF')
-      ? `${base} moved; not fast-forwardable. Re-run pnk-baton (it will re-integrate) or integrate+merge manually from worktree ${workdir}.`
+      ? (isProd
+          ? `${base} moved; not fast-forwardable. Re-run pnk-baton (it will re-integrate) or integrate+merge manually from worktree ${workdir}.`
+          : `Staging merge into '${stagingBranch}' conflicted; aborted. Branch left intact at ${workdir} — reconcile '${stagingBranch}' manually.`)
       : prodValidationMissing
         ? `PROD target: real-infrastructure validation did not PASS (status: ${validation ? validation.status : 'unavailable'}). A prod-targeted change must pass validation before it can ship — not merged; branch left intact at ${workdir}. Re-run after validation passes.`
-        : `Branch ${branch} is built, tested, and reviewed (${env}) in worktree ${workdir}. Merge: git -C ${repo} merge ${branch}.`,
+        : `Branch ${branch} is built, tested, and reviewed (${env}) in worktree ${workdir}. Merge target would be ${mergeTarget}: git -C ${repo} merge ${branch}.`,
 }
