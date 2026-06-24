@@ -5,12 +5,10 @@ An OpenClaw plugin that adds an accessibility-audit capability.
 ## What it is
 
 - **Tool `a11y_audit`** — audits a web page (`url`) or a raw HTML string
-  (`html`) against a WCAG standard using [axe-core](https://github.com/dequelabs/axe-core),
-  running inside a CDP-reachable Chromium via `playwright-core` `connectOverCDP`
-  (no second browser is launched). The browser can be **local** (`http://…`) or
-  **remote/managed** (`wss://…`, e.g. AWS Bedrock AgentCore Browser) — the
-  endpoint and any auth headers are config, so the plugin is host-agnostic.
-  Returns `{ ok, standard, target, summary, violations }`, or a structured
+  (`html`) against a WCAG standard using [axe-core](https://github.com/dequelabs/axe-core).
+  How it reaches a browser is a configurable **provider** (default `mcp` — reuse
+  the agent's existing browser MCP tools; also `cdp` and `agentcore`). Returns
+  `{ ok, standard, target, summary, violations }`, or a structured
   `{ ok: false, error, message }` on failure. It **never throws out of the
   hook** — a failed audit cannot break the agent turn.
 - **Skill `accessibility`** — WCAG 2.1 AA guidance plus the correction table;
@@ -31,18 +29,29 @@ Provide exactly one of `url` / `html`. `standard` ∈ `WCAG2.0AA`, `WCAG2.1AA`
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `browserProvider` | `cdp` | How the browser is supplied: `cdp` (attach to a standing endpoint) or `agentcore` (per-audit AWS Bedrock AgentCore session). |
-| `waitUntil` | `load` | Page navigation wait condition: `load` / `domcontentloaded` / `networkidle` / `commit`. For SPA / managed browsers, `networkidle` avoids auditing a half-rendered page. |
+| `browserProvider` | `mcp` | How the browser is supplied: `mcp` (reuse the agent's existing browser MCP tools), `cdp` (attach to a standing endpoint), or `agentcore` (per-audit AWS Bedrock AgentCore session). |
+| `mcp` | _(none)_ | (`mcp` provider) `{ serverName, navigateTool?, evaluateTool? }`. The MCP server name your browser tools are registered under; tool names default to `browser_navigate` / `browser_evaluate`. |
+| `waitUntil` | `load` | (`cdp`/`agentcore`) Page navigation wait condition: `load` / `domcontentloaded` / `networkidle` / `commit`. |
 | `cdpEndpoint` | `http://127.0.0.1:9222` | (`cdp` provider) CDP endpoint. `http(s)://` (local) or `ws(s)://` (remote/managed). |
 | `cdpHeaders` | _(none)_ | (`cdp` provider) Optional headers for the CDP connect handshake, for a browser that authenticates the socket. |
 | `connectTimeoutMs` | `30000` | Timeout for the CDP connect handshake. |
-| `agentcore` | _(none)_ | (`agentcore` provider) `{ region, identifier?, sessionTimeoutSeconds? }`. IAM auth comes from the agent's ambient AWS credentials — no keys here. |
+| `agentcore` | _(none)_ | (`agentcore` provider) `{ region, identifier?, sessionTimeoutSeconds?, viewport? }`. IAM auth comes from the agent's ambient AWS credentials — no keys here. |
 | `defaultStandard` | `WCAG2.1AA` | Standard used when a call omits `standard`. |
 | `timeoutMs` | `30000` | Max time for one audit before failing open with `timeout`. |
 
 ### Browser providers
 
-**`cdp` (default)** — attach to a standing CDP endpoint. `cdpEndpoint` accepts
+**`mcp` (default)** — audit through the agent's **existing** browser MCP tools,
+reusing the runtime's open MCP session: no CDP socket, no SDK, no per-audit
+session, **no new connection**. The runner calls `api.runtime.callTool(serverName,
+toolName, input)` to drive `browser_navigate` → `browser_evaluate` (inject
+axe-core) → `browser_evaluate` (run axe), then parses the returned JSON. Set
+`mcp.serverName` to the server your browser tools live under; `navigateTool` /
+`evaluateTool` default to `browser_navigate` / `browser_evaluate`. Raw HTML is
+audited by navigating to a `data:text/html,…` URL (MCP has no `setContent`).
+Needs neither `playwright-core` nor `bedrock-agentcore` installed.
+
+**`cdp`** — attach to a standing CDP endpoint. `cdpEndpoint` accepts
 `http(s)://` (local) or `ws(s)://`, and `cdpHeaders` forwards any auth headers
 the socket needs. The plugin only passes headers through; it does not mint AWS
 SigV4. Note: statically-configured SigV4 headers are short-lived and will expire
@@ -77,8 +86,9 @@ node --test
 
 Node 26 strips TypeScript types natively, so the `node:test` suite runs the
 `.ts` modules with **zero third-party packages installed** — the browser runner
-is injected as a fake. `playwright-core` and `axe-core` are runtime-only
-dependencies (declared in `package.json`); OpenClaw installs them under
+is injected as a fake. `axe-core` is the only regular dependency; `playwright-core`
+(`cdp`) and `bedrock-agentcore` (`agentcore`) are `optionalDependencies`, loaded
+lazily only when their provider is used. OpenClaw installs declared deps under
 `~/.openclaw/plugin-runtime-deps/` at install time.
 
 ## Install

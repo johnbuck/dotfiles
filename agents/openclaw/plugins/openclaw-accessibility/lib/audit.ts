@@ -87,11 +87,25 @@ export interface RunnerConfig {
   waitUntil?: WaitUntil;
   // Provider-specific config for browserProvider: "agentcore".
   agentcore?: AgentCoreConfig;
+  // Provider-specific config for browserProvider: "mcp".
+  mcp?: McpConfig;
   defaultStandard?: string;
   timeoutMs?: number;
 }
 
-export type BrowserProviderKind = "cdp" | "agentcore";
+export type BrowserProviderKind = "cdp" | "agentcore" | "mcp";
+
+// Config for the "mcp" provider: audit through the agent's EXISTING browser MCP
+// tools (no CDP socket, no SDK, no session management). The plugin invokes them
+// in-process via api.runtime.callTool(serverName, toolName, input), reusing the
+// runtime's open MCP session — no new connection.
+export interface McpConfig {
+  // The MCP server name the browser tools are registered under (runtime-specific).
+  serverName: string;
+  // Tool names (bare, no server prefix). Defaults match the common convention.
+  navigateTool?: string; // default "browser_navigate"
+  evaluateTool?: string; // default "browser_evaluate"
+}
 
 export type WaitUntil = "load" | "domcontentloaded" | "networkidle" | "commit";
 
@@ -347,12 +361,107 @@ export function createAgentCoreRunner(config: RunnerConfig = {}): Runner {
   };
 }
 
-// createRunnerFromConfig — pick the provider. Default is "cdp" (unchanged
-// behavior); "agentcore" opts into the per-audit AWS session.
-export function createRunnerFromConfig(config: RunnerConfig = {}): Runner {
-  return config.browserProvider === "agentcore"
-    ? createAgentCoreRunner(config)
-    : createCdpRunner(config);
+// extractAxeJson — browser_evaluate returns the axe result as a JSON string;
+// callTool may wrap it in an MCP content array. Unwrap to the JSON value. Pure +
+// exported for unit tests.
+export function extractAxeJson(result: any): any {
+  let payload = result;
+  // MCP content-array wrapping: { content: [{ type:"text", text:"<json>" }] }.
+  if (payload && typeof payload === "object" && Array.isArray(payload.content)) {
+    const textPart = payload.content.find((c: any) => typeof c?.text === "string");
+    if (textPart) payload = textPart.text;
+  } else if (payload && typeof payload === "object" && typeof payload.text === "string") {
+    payload = payload.text;
+  }
+  if (typeof payload === "string") {
+    try {
+      return JSON.parse(payload);
+    } catch {
+      return payload;
+    }
+  }
+  return payload;
+}
+
+// createMcpRunner — the "mcp" provider. Audits through the agent's EXISTING
+// browser MCP tools via api.runtime.callTool(serverName, toolName, input). No
+// CDP, no Playwright, no session lifecycle — the MCP server owns the browser, so
+// there is no connect/close here and no new connection is opened.
+//
+//   navigate -> evaluate(inject axe source) -> evaluate(run axe) -> parse JSON
+//
+// browser_evaluate is given the script under `script`, awaits the returned
+// Promise, and returns a JSON string (the runtime's confirmed contract).
+// runAxeViaMcp — the MCP dispatch: navigate -> inject axe -> run axe -> parse.
+// Takes the axe source as a param (no axe-core import here) so it is unit-testable
+// with a fake callTool and zero packages installed. html is audited by navigating
+// to a data: URL (MCP has no setContent).
+export type McpCallTool = (serverName: string, toolName: string, input: any) => Promise<any>;
+
+export async function runAxeViaMcp(
+  callTool: McpCallTool,
+  names: { serverName: string; navigateTool: string; evaluateTool: string },
+  ctx: RunnerContext,
+  axeSource: string,
+): Promise<any> {
+  const url = ctx.url ?? "data:text/html;charset=utf-8," + encodeURIComponent(ctx.html ?? "");
+  try {
+    await callTool(names.serverName, names.navigateTool, { url });
+  } catch (err) {
+    throw toErrorResult(err, { code: "navigation_failed", standard: ctx.standard, target: ctx.target });
+  }
+  try {
+    await callTool(names.serverName, names.evaluateTool, { script: axeSource });
+    const runResult = await callTool(names.serverName, names.evaluateTool, {
+      script: `return await window.axe.run(document, ${JSON.stringify(ctx.axeOptions)});`,
+    });
+    return extractAxeJson(runResult);
+  } catch (err) {
+    throw toErrorResult(err, { code: "audit_failed", standard: ctx.standard, target: ctx.target });
+  }
+}
+
+export function createMcpRunner(config: RunnerConfig = {}, api?: any): Runner {
+  const mcp = config.mcp ?? ({} as McpConfig);
+  const serverName = mcp.serverName;
+  const navigateTool = mcp.navigateTool ?? "browser_navigate";
+  const evaluateTool = mcp.evaluateTool ?? "browser_evaluate";
+  const callTool: McpCallTool | undefined =
+    typeof api?.runtime?.callTool === "function" ? api.runtime.callTool.bind(api.runtime) : undefined;
+
+  return async function mcpRunner(ctx: RunnerContext): Promise<any> {
+    if (!callTool) {
+      throw toErrorResult(
+        new Error("mcp provider: api.runtime.callTool is not available in this runtime"),
+        { code: "browser_unavailable", standard: ctx.standard, target: ctx.target },
+      );
+    }
+    if (!serverName) {
+      throw toErrorResult(new Error('browserProvider "mcp" requires mcp.serverName'), {
+        code: "browser_unavailable",
+        standard: ctx.standard,
+        target: ctx.target,
+      });
+    }
+    const axeModule = (await import("axe-core")) as any;
+    const axeSource: string = axeModule.source ?? axeModule.default?.source;
+    return runAxeViaMcp(callTool, { serverName, navigateTool, evaluateTool }, ctx, axeSource);
+    // No teardown: the MCP server owns the browser lifecycle.
+  };
+}
+
+// createRunnerFromConfig — pick the provider. Default is "mcp" (reuse the agent's
+// existing browser MCP tools); "cdp" attaches to a standing CDP endpoint;
+// "agentcore" opts into the per-audit AWS session. `api` is required for "mcp".
+export function createRunnerFromConfig(config: RunnerConfig = {}, api?: any): Runner {
+  switch (config.browserProvider) {
+    case "cdp":
+      return createCdpRunner(config);
+    case "agentcore":
+      return createAgentCoreRunner(config);
+    default:
+      return createMcpRunner(config, api);
+  }
 }
 
 // Default runner uses default config; execute() swaps in a fake in tests.

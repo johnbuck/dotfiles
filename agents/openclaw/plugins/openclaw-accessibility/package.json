@@ -9,10 +9,10 @@
     "test": "node --test"
   },
   "dependencies": {
-    "axe-core": "^4.10.2",
-    "playwright-core": "^1.49.1"
+    "axe-core": "^4.10.2"
   },
   "optionalDependencies": {
+    "playwright-core": "^1.49.1",
     "bedrock-agentcore": "^0.2.4"
   }
 }
