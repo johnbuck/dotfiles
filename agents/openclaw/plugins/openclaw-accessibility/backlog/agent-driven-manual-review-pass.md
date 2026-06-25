@@ -125,7 +125,7 @@ is the smallest LLM surface, not an all-LLM pass.
 
 AI judgment here is **assistive, not authoritative** — its failure mode is
 confident-but-wrong calls. Real users with disabilities remain the gold standard,
-and ADA/508 certification still needs human experts. The pass should report
+and any legal/compliance certification still needs human experts. The pass should report
 findings as *candidates to verify*, with confidence, never as pass/fail verdicts.
 
 ## Open questions
