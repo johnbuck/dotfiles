@@ -130,7 +130,7 @@ findings as *candidates to verify*, with confidence, never as pass/fail verdicts
 
 ## Open questions
 
-- **Deep-research pass — prerequisite to implementation:** thoroughly survey the
+- **Deep research pass — prerequisite to implementation:** thoroughly survey the
   available tooling (see Prior art) and how much runs headless / can be reused.
 - **Deterministic vs LLM split — resolve before implementing** (see "Prefer
   deterministic where possible"): which checks become scripted probes, which
