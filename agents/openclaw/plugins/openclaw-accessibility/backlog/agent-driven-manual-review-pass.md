@@ -95,6 +95,24 @@ Pure model/vision judgment over captured artifacts:
 - Any claim of legal certification or "fully accessible" — this triages manual
   items, it does not close them.
 
+## Prefer deterministic where possible (explore BEFORE implementing)
+
+Do not assume every check has to be an LLM judgment. Much of tier 1 (keyboard +
+focus) and parts of tier 2 (accessibility tree) are mechanical and should be
+captured **deterministically** — scripted browser probes that produce a concrete
+trace (focus sequence, computed outline visibility, focus traps, target sizes,
+AX name/role presence, color-contrast deltas, reflow overflow at a given
+viewport). Deterministic checks are repeatable, cheaper, and don't suffer the
+"confident-but-wrong" failure mode; the LLM should be reserved for the genuinely
+judgment-heavy parts (alt-text *meaningfulness*, link purpose in context,
+reading order/level, whether the announced output "makes sense").
+
+**This split needs to be explored first.** Before building, work out which
+sections can be made deterministic (and how), and which truly require model
+judgment — and design so the deterministic layer carries as much as possible,
+with the LLM layered on top only where mechanical checks can't decide. The goal
+is the smallest LLM surface, not an all-LLM pass.
+
 ## Limits (state these in any output)
 
 AI judgment here is **assistive, not authoritative** — its failure mode is
@@ -104,6 +122,9 @@ findings as *candidates to verify*, with confidence, never as pass/fail verdicts
 
 ## Open questions
 
+- **Deterministic vs LLM split — resolve before implementing** (see "Prefer
+  deterministic where possible"): which checks become scripted probes, which
+  stay model judgment, and how they layer.
 - Opt-in trigger vs always-on (cost/latency: the keyboard + vision passes add
   time and screenshots).
 - How much to lean on the Virtual Screen Reader vs the raw AX tree.
