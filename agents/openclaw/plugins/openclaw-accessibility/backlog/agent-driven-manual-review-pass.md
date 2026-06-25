@@ -84,13 +84,12 @@ Pure model/vision judgment over captured artifacts:
   human-guided assessment flows.
 
 The prior art listed here is a starting point, not a survey. **This work warrants
-a dedicated deep-research pass before implementation** — thoroughly map the
+a dedicated deep research pass before implementation** — thoroughly map the
 current tooling (open-source libraries, APIs, AX-tree/CDP capabilities, screen-
 reader simulators, the AI-a11y-agent products and how they actually work), what
 each can do headless, license/cost, and which pieces we could reuse vs build.
 Pair that research with the deterministic-vs-LLM split above; both feed the
-implementation plan. Run it via the `deep-research` harness and attach the
-findings to this item.
+implementation plan.
 
 ## Scope
 
