@@ -1,6 +1,6 @@
 ---
 title: OpenClaw accessibility native plugin with a11y_audit tool
-status: specced
+status: done
 priority: P2
 epic: openclaw-plugins
 area: [openclaw, plugins]

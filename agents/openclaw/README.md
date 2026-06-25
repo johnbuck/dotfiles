@@ -10,6 +10,7 @@ runs on a private agent host; this is the portable, scrubbed equivalent.
 |------|------------|
 | `openclaw.json` | Agent + model-provider + channel + plugin config. Secrets are `dummy`/`${ENV}` placeholders; the gateway-auth token is `${GATEWAY_AUTH_TOKEN}`. |
 | `identity/` | Juliet's persona + operating docs (see below). |
+| `plugins/openclaw-accessibility/` | Accessibility-audit plugin: the `a11y_audit` tool (axe-core over a CDP or AWS AgentCore browser) plus the browser-driven `a11y-auditor` and `accessibility` skills. MIT-licensed; has its own README, NOTICE, and `backlog/`. |
 | `plugins/pipeline-guard/` | Custom plugin enforcing a 15-stage build pipeline at the tool layer, plus its 13 bundled stage skills under `skills/`. |
 | `plugins/sessions-worktree-injector/` | Custom plugin: per-stage git-worktree isolation for subagent dispatches. |
 
