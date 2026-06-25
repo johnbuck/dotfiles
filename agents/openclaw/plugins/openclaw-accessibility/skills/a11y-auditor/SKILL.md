@@ -1,6 +1,6 @@
 ---
 name: a11y-auditor
-description: Run an automated accessibility audit (WCAG, ADA, or Section 508) by driving the agent's own browser tools (browser_navigate + browser_evaluate) to load axe-core from a CDN and run it, then group the violations into a prioritized remediation report — inline by default, or exported to a Markdown or CSV file on request. Use for an accessibility audit, ADA audit, Section 508 audit, WCAG compliance check, screen-reader/keyboard check, or color-contrast validation.
+description: Run an automated WCAG accessibility audit by driving the agent's own browser tools (browser_navigate + browser_evaluate) to load axe-core from a CDN and run it, then group the violations into a prioritized remediation report — inline by default, or exported to a Markdown or CSV file on request. Use for an accessibility audit, WCAG compliance check, screen-reader/keyboard check, or color-contrast validation.
 ---
 
 # Accessibility Auditor
@@ -10,10 +10,8 @@ job is to *measure* a page with axe-core, then turn the raw findings into an
 actionable report. You drive your own browser tools to do it — there is no
 separate audit tool to call.
 
-**On "ADA" and "Section 508" requests:** US ADA and Section 508 conformance are
-assessed against **WCAG** (2.1 / 2.0 Level AA), so run the same WCAG audit. Be
-clear in the report that this is an automated WCAG check (axe covers ~30–50% of
-WCAG) — it informs ADA/508 conformance but is **not** a legal certification.
+This is an **automated WCAG check** (axe covers ~30–50% of WCAG) — report it as
+a technical accessibility finding, **not** a legal or compliance certification.
 
 ---
 
@@ -46,8 +44,8 @@ differ slightly on your runtime; use your equivalents):
      if (!window.axe) {
        await new Promise((resolve, reject) => {
          const s = document.createElement('script');
-         s.src = 'https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.10.2/axe.min.js';
-         s.integrity = 'sha384-3NYxCdpLKVHfNs2FHPtg3qqaYuhq85m4mMnlHBlN0JzSpKYKct2PMGYfsKGaKIj4';
+         s.src = 'https://cdn.jsdelivr.net/npm/axe-core@4.12.1/axe.min.js';
+         s.integrity = 'sha384-JQegRXq6EhTiWoGPFDmqbJNsDow5BoSsGhnaeDzGp+qyOFCuMZZ24qY2fz3FxZF5';
          s.crossOrigin = 'anonymous';
          s.onload = resolve;
          s.onerror = () => reject(new Error('axe-core failed to load from CDN'));
@@ -84,8 +82,8 @@ differ slightly on your runtime; use your equivalents):
 
 3. **Parse** the returned JSON string. That object is your measurement.
 
-**CDN fallback:** if the load fails, retry with jsDelivr — same file, same
-integrity hash: `https://cdn.jsdelivr.net/npm/axe-core@4.10.2/axe.min.js`.
+**CDN fallback:** if the load fails, retry with unpkg — same file, same
+integrity hash: `https://unpkg.com/axe-core@4.12.1/axe.min.js`.
 
 **If axe still won't load** (e.g. a strict Content-Security-Policy on the page
 blocks external scripts), say so plainly and report that the audit could not run
@@ -146,8 +144,8 @@ each element:
 - Keyboard-only pass, screen-reader pass, focus order, contrast spot-checks.
 ```
 
-For **ADA / Section 508** requests, note this is an automated WCAG check, not a
-legal certification (see the note near the top).
+Note in the report that this is an automated WCAG check, not a legal or
+compliance certification (see the note near the top).
 
 ### 5. Output: inline (default) or a file
 

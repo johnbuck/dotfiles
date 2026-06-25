@@ -38,8 +38,6 @@ The agent picks up these skills from how the request is phrased:
 
 **`a11y-auditor`** (run an audit) — triggers on:
 - "accessibility audit" / "audit this page for accessibility"
-- "ADA audit" / "ADA compliance check"
-- "Section 508 audit" / "508 compliance"
 - "WCAG audit" / "WCAG compliance check"
 - "screen-reader check", "keyboard navigation check", "color-contrast check"
 
@@ -47,9 +45,8 @@ The agent picks up these skills from how the request is phrased:
 - "make this accessible", "fix the accessibility of…", implementing accessible components
 - "focus outline missing", "aria-label required", "insufficient contrast"
 
-Note: **ADA** and **Section 508** are assessed against **WCAG**, so those
-requests run the same WCAG audit — automated (axe covers ~30–50% of WCAG), and
-reported as informing conformance, not as a legal certification.
+Note: this is an automated WCAG check (axe covers ~30–50% of WCAG) — a technical
+accessibility finding, not a legal or compliance certification.
 
 ## Input
 
@@ -118,6 +115,20 @@ is injected as a fake. `axe-core` is the only regular dependency; `playwright-co
 (`cdp`) and `bedrock-agentcore` (`agentcore`) are `optionalDependencies`, loaded
 lazily only when their provider is used. OpenClaw installs declared deps under
 `~/.openclaw/plugin-runtime-deps/` at install time.
+
+### Keeping axe-core current
+
+axe-core is pinned in **two** places that must be bumped together:
+- `package.json` (`axe-core` dependency) — used by the `cdp`/`agentcore` tool.
+- the `a11y-auditor` skill's CDN URL **and** its `integrity` SRI hash — used by
+  the skill.
+
+To bump: pick the latest from `npm view axe-core version`, update `package.json`,
+then update the skill's CDN URL + recompute the SRI
+(`curl -sL <url> | openssl dgst -sha384 -binary | openssl base64 -A`). Verify the
+hash is identical across jsDelivr and unpkg. Note: cdnjs can lag npm by days, so
+the skill uses **jsDelivr** (npm-backed, always current) as primary, unpkg as
+fallback. Currently pinned: **4.12.1**.
 
 ## Install
 
