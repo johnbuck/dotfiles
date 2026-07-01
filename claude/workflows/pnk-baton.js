@@ -133,11 +133,11 @@ const BASELINE = {
 const BUILD = {
   type: 'object', additionalProperties: false,
   properties: {
-    summary: { type: 'string' },
     testsPass: { type: 'boolean' },
+    summary: { type: 'string' },
     flagged: { type: 'array', items: { type: 'string' } },
   },
-  required: ['summary', 'testsPass'],
+  required: ['testsPass', 'summary'],
 }
 const VERDICT = {
   type: 'object', additionalProperties: false,
@@ -207,8 +207,8 @@ const INTEG = {
   type: 'object', additionalProperties: false,
   properties: {
     status: { enum: ['CLEAN', 'CONFLICT'] },
-    baseMoved: { type: 'boolean' },
     testsPass: { type: 'boolean' },
+    baseMoved: { type: 'boolean' },
     newFailures: { type: 'array', items: { type: 'string' } },
     detail: { type: 'string' },
   },
@@ -316,7 +316,7 @@ let shipped = false
 for (let attempt = 0; attempt <= maxRetries; attempt++) {
   phase('Build')
   const build = await agent(
-    `You are the pnk-baton BUILDER (the single writer).\n${fields}\n\nMake these tests pass with the minimum correct code. Run \`${tests.runCommand}\`. DO NOT modify any test file. Stay on ${branch} in this worktree. Commit on the feature branch: feat: ${specName}.${baselineNote}\n\nReport testsPass=true when your target tests pass AND the branch introduces NO NEW failures vs the baseline above — a test that also fails on ${base} (in the baseline list) is pre-existing debt, is NOT yours to fix, and does NOT keep testsPass from being true. Never edit a test to silence it. If your only remaining failures are pre-existing baseline ones, report testsPass=true and list them in \`flagged\` as pre-existing.\n\nPlan approach:\n${plan.approach}\n` +
+    `You are the pnk-baton BUILDER (the single writer).\n${fields}\n\nMake these tests pass with the minimum correct code. Run \`${tests.runCommand}\`. DO NOT modify any test file. Stay on ${branch} in this worktree. Commit on the feature branch: feat: ${specName}.${baselineNote}\n\nReport testsPass=true when your target tests pass AND the branch introduces NO NEW failures vs the baseline above — a test that also fails on ${base} (in the baseline list) is pre-existing debt, is NOT yours to fix, and does NOT keep testsPass from being true. Never edit a test to silence it. If your only remaining failures are pre-existing baseline ones, report testsPass=true and list them in \`flagged\` as pre-existing.\n\n**Final report:** your StructuredOutput MUST set \`testsPass\` (boolean) FIRST, then a \`summary\` of AT MOST 3 sentences — do not write a long essay, the committed diff is the record.\n\nPlan approach:\n${plan.approach}\n` +
       (priorFindings ? `\nThe reviewers REJECTED the previous attempt. Address every Critical, High, and Medium finding below, then re-run the tests:\n${priorFindings}` : ''),
     { agentType: 'pnk-baton-builder', phase: 'Build', label: `build:attempt-${attempt + 1}`, schema: BUILD },
   )
