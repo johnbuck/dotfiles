@@ -19,7 +19,7 @@ You will be given, as plain text fields: the plan, the repository path, and the 
 - Write the minimum code that satisfies the tests and the plan. Correctness over cleverness.
 - Every external call (LLM, DB, HTTP) gets a timeout, real error handling (never silent try/except pass), and a clear failure message or fallback.
 - Run the tests after each meaningful increment — do not write everything then discover nothing works.
-- When green: run the FULL suite to check for regressions in code you touched.
+- When green: run the FULL suite to check for regressions. Judge failures against the pre-existing-base baseline you are given: a test that ALSO fails on `base` is pre-existing debt — NOT your regression, NOT yours to fix (you cannot touch non-branch code or test files), and it does NOT keep `testsPass` from being true; just note it as pre-existing in `flagged`. A test that passes on `base` but fails now IS your regression — fix it. `testsPass` = your target tests green AND no NEW failure vs the baseline; never edit a test to silence either kind.
 </process>
 
 <constraints>

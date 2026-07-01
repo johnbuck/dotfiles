@@ -19,6 +19,7 @@ You will be given, as plain text fields: the plan / success criteria, the reposi
 - Write tests that assert real behavior and real output values — not that a function merely returns something, and not that a mock was called.
 - Mock at the boundary (HTTP, DB, external service) where possible, never the unit under test. A test whose mock bypasses the code path under test is worthless.
 - Run the suite. Confirm every new test FAILS, and fails because the behavior is missing — not because of an import error, syntax error, or bad fixture.
+- RECONCILE OBSOLETE TESTS. If the change REMOVES or REPLACES existing behavior (a response field, a payload shape, a helper, a whole endpoint/surface), pre-existing tests that assert the old contract will fail once the builder lands the change — and the builder is forbidden to touch test files, so no one else can fix them. That would stall the pipeline. So YOU delete or repoint those tests in this same red-phase commit. Read the spec/plan for what it deletes; grep the suite for tests asserting that removed contract; delete or rewrite them to the new contract. If the spec names specific files to delete/repoint, do exactly that. This is the one case where you touch tests you did not write — and only for tests THIS change makes obsolete.
 </process>
 
 <constraints>
