@@ -6,7 +6,8 @@ export const meta = {
     { title: 'Setup', detail: 'create an isolated per-run git worktree' },
     { title: 'Plan', detail: 'planner turns the spec into a testable design' },
     { title: 'Align', detail: 'drift-checker: pre-build alignment vs North Star / principles / spec / roadmap' },
-    { title: 'Test', detail: 'test-author writes failing tests (red)' },
+    { title: 'Test', detail: 'test-author writes failing tests (red) + reconciles tests obsoleted by the change' },
+    { title: 'Baseline', detail: 'capture pre-existing failures on base so the gate judges NEW failures only' },
     { title: 'Build', detail: 'builder makes tests pass (green); loops with review' },
     { title: 'Integrate', detail: 'merge latest base into the branch' },
     { title: 'Review', detail: 'independent reviewers, one per dimension, in parallel' },
@@ -120,6 +121,15 @@ const TESTS = {
   },
   required: ['testFiles', 'runCommand', 'allFail'],
 }
+const BASELINE = {
+  type: 'object', additionalProperties: false,
+  properties: {
+    failures: { type: 'array', items: { type: 'string' } },
+    ran: { type: 'boolean' },
+    note: { type: 'string' },
+  },
+  required: ['failures', 'ran'],
+}
 const BUILD = {
   type: 'object', additionalProperties: false,
   properties: {
@@ -199,6 +209,7 @@ const INTEG = {
     status: { enum: ['CLEAN', 'CONFLICT'] },
     baseMoved: { type: 'boolean' },
     testsPass: { type: 'boolean' },
+    newFailures: { type: 'array', items: { type: 'string' } },
     detail: { type: 'string' },
   },
   required: ['status', 'testsPass'],
@@ -270,10 +281,32 @@ if (isDrift(align)) {
 // ---- Test (red) ------------------------------------------------------------
 phase('Test')
 const tests = await agent(
-  `You are the pnk-baton TEST-AUTHOR.\n${fields}\n\nYou are already on branch ${branch} in a dedicated worktree — do NOT create or switch branches. Write failing tests that encode these success criteria, then confirm they all fail for the right reason.\n\nSuccess criteria:\n${plan.successCriteria.map((c, i) => `${i + 1}. ${c}`).join('\n')}\n\nPlan approach:\n${plan.approach}\n\nCommit the tests on ${branch} with a message: test: ${specName} (red).`,
+  `You are the pnk-baton TEST-AUTHOR.\n${fields}\n\nYou are already on branch ${branch} in a dedicated worktree — do NOT create or switch branches. Write failing tests that encode these success criteria, then confirm they all fail for the right reason.\n\nRECONCILE OBSOLETE TESTS (part of the red phase — you are the ONLY stage allowed to touch test files): if this change REMOVES or REPLACES existing behavior, pre-existing tests that assert the now-removed contract will fail once the builder lands the change, and the builder is FORBIDDEN to fix them — so YOU must delete or repoint them in this same commit. Read the spec/plan for anything it deletes or replaces (a response field, a payload shape, a helper, a whole surface), grep the test suite for tests asserting that removed contract, and delete or rewrite them to the new contract now. If the spec names specific test files to delete/repoint, do exactly that. Only reconcile tests made obsolete by THIS change — never weaken or delete unrelated tests to force green.\n\nSuccess criteria:\n${plan.successCriteria.map((c, i) => `${i + 1}. ${c}`).join('\n')}\n\nPlan approach:\n${plan.approach}\n\nCommit the tests on ${branch} with a message: test: ${specName} (red).`,
   { agentType: 'pnk-baton-test-author', phase: 'Test', schema: TESTS },
 )
 log(`Tests: ${tests.testFiles.length} file(s); run with \`${tests.runCommand}\`; allFail=${tests.allFail}`)
+
+// ---- Baseline: pre-existing failures on `base` (so the gate judges NEW failures only) --------
+// A test that ALREADY fails on `base` is unrelated debt — not this branch's fault. Without this
+// baseline the Build<->Integrate loop false-fails (and eventually false-BLOCKS) whenever `base`
+// carries any red test: the integrator re-runs the whole suite, sees the pre-existing red, reports
+// testsPass=false, and the builder — correctly refusing to touch non-epic code — can never converge.
+// Placed once here (the baseline doesn't change across build attempts). Falls back to absolute
+// gating if it genuinely can't run against `base`.
+const workdirParent = workdir.split('/').slice(0, -1).join('/') || '/'
+const baselineWorktree = `${workdirParent}/pnk-baseline-${branchSlug}`
+phase('Baseline')
+const baseline = await agent(
+  `You are the pnk-baton INTEGRATOR establishing a TEST BASELINE on ${base}. Capture which tests ALREADY FAIL on a clean ${base} — pre-existing debt this branch is NOT responsible for and must never be blamed for.\n${fields}\n\nSteps:\n1. Remove any stale baseline worktree, then create a fresh worktree of ${base} where the test harness can see it — use the SAME parent directory as the feature worktree (${workdirParent}) so a test container that mounts the repo also mounts it: \`git -C ${repo} worktree remove --force ${baselineWorktree}\` (ignore errors), \`git -C ${repo} worktree prune\`, \`git -C ${repo} worktree add ${baselineWorktree} ${base}\`.\n2. In ${baselineWorktree}, run the SAME gate the branch uses — \`${tests.runCommand}\` — with the SAME environment/setup (run it byte-for-byte identically so env-driven failures are captured in the baseline too). The branch's NEW test files do not exist on ${base}, so everything that fails here is pre-existing debt.\n3. Collect the exact FAILING test identifiers (pytest node ids \`path::Class::test\`, vitest test names, or the tool's equivalent — enough to match them against the branch run). Report them in \`failures\` and set ran=true.\n4. Clean up: \`git -C ${repo} worktree remove --force ${baselineWorktree} && git -C ${repo} worktree prune\`.\nIf the gate genuinely cannot run against ${base} (infra down, command errors before collecting), report ran=false with an empty failures list and the reason in note — the run will fall back to absolute gating.`,
+  { agentType: 'pnk-baton-integrator', phase: 'Baseline', label: 'baseline:base-failures', schema: BASELINE },
+)
+const baselineFailures = (baseline.failures || []).filter(Boolean)
+log(`Baseline: ${baseline.ran ? `${baselineFailures.length} pre-existing failure(s) on ${base}` : `could not run on ${base} — absolute gating`}${baseline.note ? ` (${baseline.note})` : ''}`)
+const baselineNote = baselineFailures.length
+  ? `\n\n=== PRE-EXISTING TEST FAILURES ON ${base} (baseline) ===\nThese tests ALREADY FAIL on ${base} — pre-existing debt, NOT this branch's responsibility. Do NOT try to fix them, do NOT edit them, and they MUST NOT count as a failure or trigger a rebuild. A test counts as failing for THIS branch ONLY if it is NOT in this list (i.e. a NEW failure the branch introduced):\n${baselineFailures.map((f) => `- ${f}`).join('\n')}`
+  : (baseline.ran
+      ? `\n\n(Baseline: ${base} is fully green — treat any failing test as this branch's own.)`
+      : `\n\n(Baseline: could not be measured on ${base} — using absolute gating; treat any failing test as this branch's own.)`)
 
 // ---- Build + Integrate + Review loop ---------------------------------------
 let priorFindings = ''
@@ -283,7 +316,7 @@ let shipped = false
 for (let attempt = 0; attempt <= maxRetries; attempt++) {
   phase('Build')
   const build = await agent(
-    `You are the pnk-baton BUILDER (the single writer).\n${fields}\n\nMake these tests pass with the minimum correct code. Run \`${tests.runCommand}\`. DO NOT modify any test file. Stay on ${branch} in this worktree. Commit on the feature branch: feat: ${specName}.\n\nPlan approach:\n${plan.approach}\n` +
+    `You are the pnk-baton BUILDER (the single writer).\n${fields}\n\nMake these tests pass with the minimum correct code. Run \`${tests.runCommand}\`. DO NOT modify any test file. Stay on ${branch} in this worktree. Commit on the feature branch: feat: ${specName}.${baselineNote}\n\nReport testsPass=true when your target tests pass AND the branch introduces NO NEW failures vs the baseline above — a test that also fails on ${base} (in the baseline list) is pre-existing debt, is NOT yours to fix, and does NOT keep testsPass from being true. Never edit a test to silence it. If your only remaining failures are pre-existing baseline ones, report testsPass=true and list them in \`flagged\` as pre-existing.\n\nPlan approach:\n${plan.approach}\n` +
       (priorFindings ? `\nThe reviewers REJECTED the previous attempt. Address every Critical, High, and Medium finding below, then re-run the tests:\n${priorFindings}` : ''),
     { agentType: 'pnk-baton-builder', phase: 'Build', label: `build:attempt-${attempt + 1}`, schema: BUILD },
   )
@@ -291,17 +324,19 @@ for (let attempt = 0; attempt <= maxRetries; attempt++) {
 
   phase('Integrate')
   const integ = await agent(
-    `You are the pnk-baton INTEGRATOR.\n${fields}\n\nIntegrate the latest ${base} into ${branch} (in this worktree) so the branch stays mergeable and the review diff is clean. Refresh ${base}, then \`git merge --no-ff ${base}\` into ${branch} (do NOT rebase). A large incoming changeset or many deletions coming from ${base} is EXPECTED — that is other people's work that has landed on ${base}, never something for you to undo or worry about. On a clean merge: re-run \`${tests.runCommand}\` and report CLEAN with testsPass. On conflict: \`git merge --abort\` and report CONFLICT with the conflicting paths; do NOT resolve it yourself.`,
+    `You are the pnk-baton INTEGRATOR.\n${fields}\n\nIntegrate the latest ${base} into ${branch} (in this worktree) so the branch stays mergeable and the review diff is clean. Refresh ${base}, then \`git merge --no-ff ${base}\` into ${branch} (do NOT rebase). A large incoming changeset or many deletions coming from ${base} is EXPECTED — that is other people's work that has landed on ${base}, never something for you to undo or worry about. On a clean merge: re-run \`${tests.runCommand}\`. On conflict: \`git merge --abort\` and report CONFLICT with the conflicting paths; do NOT resolve it yourself.${baselineNote}\n\ntestsPass means NO NEW failures vs ${base}, NOT an all-green suite: after re-running, compute newFailures = (tests failing now) MINUS (the baseline list above), matching by test identifier. Report testsPass=true iff newFailures is empty. Pre-existing baseline failures do NOT count and must NEVER trigger a rebuild (the builder cannot fix non-branch code — looping on base debt is the bug this guards against). Put any NEW failures in \`newFailures\` and \`detail\`; if there are none, report CLEAN + testsPass=true even when the raw suite still shows baseline reds.`,
     { agentType: 'pnk-baton-integrator', phase: 'Integrate', label: `integrate:attempt-${attempt + 1}`, schema: INTEG },
   )
   if (integ.status === 'CONFLICT') {
     return { status: 'CONFLICT-HALT', branch, base, worktree: workdir, reason: `Merging ${base} into ${branch} conflicts — operator must resolve`, detail: integ.detail, plan }
   }
   if (!integ.testsPass) {
-    priorFindings = `Integrating ${base} into the branch broke the tests: ${integ.detail || '(see test run)'}. Make the tests pass on the integrated code (production code only; do not edit tests).`
-    log(`Integrate attempt ${attempt + 1}: tests FAIL after integrating ${base} -> rebuild`)
+    const newFails = (integ.newFailures || []).filter(Boolean)
+    const newFailList = newFails.length ? `\nNEW failures the branch introduced (baseline debt already excluded):\n${newFails.map((f) => `- ${f}`).join('\n')}` : ''
+    priorFindings = `Integrating ${base} introduced NEW test failures (pre-existing ${base} debt already excluded — do NOT touch those). Fix them with production code only (do not edit tests).${newFailList}${integ.detail ? `\n${integ.detail}` : ''}`
+    log(`Integrate attempt ${attempt + 1}: ${newFails.length || 'some'} NEW failure(s) vs ${base} -> rebuild`)
     if (attempt === maxRetries) {
-      return { status: 'BLOCKED', branch, base, worktree: workdir, reason: `tests fail after integrating ${base} after ${maxRetries + 1} attempts`, plan }
+      return { status: 'BLOCKED', branch, base, worktree: workdir, reason: `Branch still introduces NEW test failures vs ${base} after ${maxRetries + 1} attempts (pre-existing baseline debt excluded)${newFails.length ? `: ${newFails.join(', ')}` : ''}. If these are TEST files asserting behavior this change removed, the test-author must reconcile them (the builder cannot edit tests) — re-run after the spec names them.`, newFailures: newFails, plan }
     }
     continue
   }
