@@ -55,6 +55,14 @@ the heavy two-document ceremony.
 - For any data schema or API, show a concrete example — an actual JSON record, request, and
   response — not just a list of field names.
 
+## Plan-mode specificity (the bar for the technical section)
+- The technical approach is an implementation plan, not a description: exact file:line touch
+  points from reading the code, and the actual code to write for anything non-trivial (a
+  build-ready appendix for long code). History is unambiguous here: the specs that carried exact
+  queries/code built cleanly; the specs that described behavior in prose drifted.
+- When the work comes from a prototype, the prototype's dialed-in code and interaction mechanics
+  are embedded verbatim as the build contract — the builder ports faithfully, never re-derives.
+
 ## Scope and completeness
 - Scope the COMPLETE feature. Necessary work is not punted to an unscoped "later".
 - Anything deferred is a deliberate, stated decision in "Out of scope", never a silent gap.
