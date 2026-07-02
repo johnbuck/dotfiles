@@ -39,21 +39,27 @@ Steps:
    - `requireRoadmap` = true only if `--require-roadmap` is present. When set, a missing canonical roadmap is a hard failure; default is warn-and-continue.
    - `northStar` = the value after `--north-star` if present — an explicit path to the project's North Star/vision doc. Else omit (the drift-checker auto-discovers it).
    - `roadmap` = the value after `--roadmap` if present — an explicit path to the canonical roadmap. Else omit (auto-discovered).
-2. **PRE-FLIGHT: spec structure check — do NOT launch a non-conforming spec.** When `spec` is a file,
-   read it (over ssh when `--ssh` is set) and verify it meets the spec standard BEFORE spending a
-   workflow run (the Align gate would halt on it anyway — catching it here is free):
-   - **Current behavior (as-is)** section with file:line refs — required whenever the spec modifies an
+2. **PRE-FLIGHT: spec quality check — do NOT launch a spec that would fail the rubric.** When `spec`
+   is a file, read it (over ssh when `--ssh` is set) and judge it against the same rubric the Align
+   gate scores, BEFORE spending a workflow run (catching it here is free). Judge quality, not the
+   presence of headings — a section that exists but is vague or prose-only fails:
+   - **grounded-in-code** — a Current behavior (as-is) inventory with file:line refs when modifying an
      existing surface (a brand-new surface must say so explicitly).
-   - **Change map** with KEEP/CHANGE/REMOVE dispositions covering the as-is elements.
-   - **North Star check** section — governing canon rules quoted verbatim with file paths (or an
+   - **change-map** — KEEP/CHANGE/REMOVE dispositions covering the as-is elements.
+   - **north-star-values** — the specific governing canon rules quoted verbatim with file paths (or an
      explicit "none — no North Star rule governs this surface"). Spot-check one quote against the
      cited file. Rules with no canonical source do not count.
-   - A technical section at plan-mode specificity: exact touch points, and the actual code for
-     non-trivial changes (a spec that only *describes* behavior in prose is not build-ready).
-   If any of these is missing, STOP — do not invoke Workflow. Tell the operator exactly what the spec
-   lacks and offer to run the **pnk-spec** skill to bring it up to standard (or fix it directly if the
-   gap is mechanical), then re-run this skill. A raw task description (no spec file) skips this check —
-   but for anything non-trivial, offer pnk-spec first.
+   - **code-examples** — the actual code (query / function body / config / schema-with-example) for
+     every non-trivial change; a technical section that only *describes* behavior in prose is not
+     build-ready. Prototype-derived work embeds the prototype's real code.
+   - **build-guidance** — ordered, specific build steps; if you can name a decision the builder would
+     have to make alone, the spec isn't ready.
+   - **testable-acceptance** — criteria with named verification and at least one error path.
+   - **clarity** — no statement a builder could read two ways.
+   If any criterion fails, STOP — do not invoke Workflow. Tell the operator exactly which criteria
+   failed and why, and offer to run the **pnk-spec** skill to bring the spec up to standard (or fix it
+   directly if the gap is mechanical), then re-run this skill. A raw task description (no spec file)
+   skips this check — but for anything non-trivial, offer pnk-spec first.
 3. Invoke the **Workflow** tool with `name: "pnk-baton"` and `args: { spec, repo, env, base, validate, ssh, worktree, requireRoadmap, northStar, roadmap }` (omit any optional flag not provided; `env` is required and must always be passed). The workflow itself hard-fails if `env` is missing or not `staging`/`prod`.
 4. When it returns, relay the result concisely: the feature branch name, the **target environment**, the gate outcomes (plan criteria count, alignment pre/post-build, tests, review PASS/REJECT, validation), and the exact merge command from the `note` field. Do NOT merge automatically — pnk-baton produces a reviewed branch; the user ships it.
 
