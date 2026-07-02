@@ -37,6 +37,7 @@ You will be given, as plain text fields:
 <output>
 Return a structured plan:
 - Summary: one sentence on what changes and why.
+- Goal: 2-4 plain sentences — the problem, the outcome the operator wants, and why it matters (from the spec's summary, its "Why this exists", and its North Star check). This is shown verbatim to every downstream agent as the fixed point for their decisions; write it to stand alone. State the goal, not the approach.
 - Approach: the chosen design, with files/functions to touch.
 - Interfaces: public signatures, CLI flags, config, or schema changes.
 - Failure modes and rollback.
