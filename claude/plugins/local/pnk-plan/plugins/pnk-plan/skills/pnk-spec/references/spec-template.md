@@ -31,6 +31,36 @@ this plus the one-sentence summary already make it obvious — don't restate fou
 ## What we're building
 A short, concrete description of the feature/work from the user's point of view.
 
+## Current behavior (as-is)
+REQUIRED whenever the work modifies an existing surface (omit only for a brand-new, from-scratch
+surface — and say so). An inventory of what the touched code path does TODAY, written by READING
+the code at spec time — never from memory or conversation. List every behavior-shaping element on
+the path: each filter, limit, cap, guard, gate, fallback, branch, ordering rule, and cache, with
+its file:line. This is the list the change map below dispositions; anything doing something on
+this path that isn't listed here is a spec defect.
+- <element> — <what it does> (`path/to/file.py:123`)
+- <element> — <what it does> (`path/to/file.py:145`)
+
+## Change map
+Every as-is element gets an explicit disposition. **Anything not listed as CHANGE or REMOVE is
+KEEP — the build may not alter it.** REMOVE lines are the ONLY authorized deletions; a build that
+removes a guard/filter/behavior with no REMOVE line here is drift, full stop.
+
+| As-is element | Disposition | Detail |
+|---|---|---|
+| <element> | KEEP | unchanged |
+| <element> | CHANGE | <exact new behavior> |
+| <element> | REMOVE | <why it is safe to remove> |
+
+## Invariants (must still hold)
+The canonical rules governing this surface that the change must NOT break — from the North Star,
+the schema/reference docs, and the repo's standing rules. For each: **quote the rule verbatim with
+its file path** (verified by reading the file at spec time — a paraphrase from memory is not a
+citation), then state it as a testable condition. Each invariant becomes a regression test in the
+red phase and a live check in validation.
+- **<invariant-handle>** — canon: "<verbatim quote>" (`NORTH_STAR.md § <section>`); testable:
+  <condition a test or command can check>
+
 ## Behavior
 - **Actors / systems:** who or what triggers this, and which external systems/services it touches.
 - **Preconditions:** the state, data, or services that must already exist for this to run.
@@ -97,7 +127,8 @@ staging first, state the blast radius of any destructive step.
 
 ## Testing
 What proves it works: unit / integration / end-to-end, the frameworks, and lint/format/type
-gates. Tie each back to the acceptance criteria above.
+gates. Tie each back to the acceptance criteria above — AND to the invariants: every invariant
+gets a regression test (red phase) so breaking a rule turns a test red, not a doc stale.
 
 ## Dependencies
 What this work depends on, and what depends on it.

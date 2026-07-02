@@ -15,6 +15,23 @@ the heavy two-document ceremony.
   workstream is `wiley-migration`, not `C1`. A phase is `red-tests-first`, not `Step0`.
 - Cryptic codes ossify into permanent, unreadable identifiers. Never create them.
 
+## Ground truth before prose (the discipline that prevents drift)
+- **Inventory before you change.** A spec that modifies an existing surface starts by READING the
+  actual code and listing what the path does today (every filter, limit, guard, gate, fallback,
+  branch — with file:line). You cannot correctly scope a change to a surface you haven't
+  inventoried; the gaps in the inventory become the builder's silent guesses.
+- **Disposition everything.** Every inventoried element is explicitly KEEP / CHANGE / REMOVE in
+  the change map. Unlisted = KEEP. REMOVE lines are the only deletions the build is authorized to
+  make — "the builder needed to drop it for performance" is drift, not a decision.
+- **Canon is quoted, never recalled.** Any sentence citing a canonical doc (North Star, schema
+  reference, standing rule) quotes it verbatim with the file path, verified by reading the file at
+  write time. If you can't point at the line, don't write "canonical" — go read it or ask. A
+  from-memory paraphrase labeled canonical is how fabricated rules enter specs.
+- **Invariants are part of the contract.** The rules the change must NOT break get the same
+  treatment as the features it must deliver: listed, testable, tested. Acceptance criteria define
+  what the change does; invariants define what it must leave intact. A spec with only the former
+  authorizes anything not mentioned.
+
 ## Requirements
 - Use "should", not "must".
 - Use "interact" / "interaction", not "click" / "tap" (standard terms like "click-through
