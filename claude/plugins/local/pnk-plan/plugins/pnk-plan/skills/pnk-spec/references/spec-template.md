@@ -96,16 +96,27 @@ test. Rules:
 - **<readable-handle>** — <condition>; verified by: <…>
 
 ## Technical approach
-The chosen design and the exact surface it touches. **Write this at plan-mode specificity** — the
-bar is an implementation plan a builder can execute without inventing anything, grounded in the
-actual code (read it first), not a prose description of intent:
+The chosen design and the exact surface it touches. **Write this at plan-mode specificity** —
+an implementation plan a builder can execute without inventing anything, grounded in the actual
+code (read it first): **concise enough to scan quickly, detailed enough to execute effectively.**
+It contains the RECOMMENDED approach only — alternatives considered get at most a one-line
+"chosen over X because Y":
 - **Exact locations:** file:line / function names for every touch point, from reading the code.
+  For a pattern repeated across many files, describe the pattern once with a few representative
+  paths.
 - **The actual code:** for any non-trivial change, include the code to write — the exact query,
   the function body, the config block — as a build-ready appendix if long. A spec that says
   "add a filter" drifts; a spec that shows the filter does not.
+- **Reuse ledger:** the existing functions, utilities, and patterns this work calls instead of
+  reinventing, each with its file path. New code appears only where this ledger has no suitable
+  entry.
+- **Implementation order:** the ordered steps — which files are created/modified in which
+  sequence, and where migrations/flags/deploys fall.
 - **Prototype as contract:** when the work comes from a dialed-in prototype, embed the
   prototype's real code and interaction mechanics verbatim — the builder PORTS them faithfully,
   never re-derives from a description. The prototype IS the spec's technical content.
+- **Risks & mitigations:** what could go wrong in the build or at runtime, and the mitigation
+  for each — scaled to the work.
 - **Deploy target:** host, deploy path, compose project, ports. State it even if "same as
   existing service X". (Omit for non-deployed/pure-logic work.)
 - **Files:** each path, marked (new) or (modified), one line on what changes in each.
@@ -146,7 +157,8 @@ staging first, state the blast radius of any destructive step.
 What proves it works: unit / integration / end-to-end, the frameworks, and lint/format/type
 gates. Tie each back to the acceptance criteria above — AND to the North Star check: every quoted
 testable rule gets a regression test (red phase) so violating the North Star turns a test red,
-not a doc stale.
+not a doc stale. Include how to verify the change **end-to-end on the real thing** — the exact
+command / endpoint / job to run against real infrastructure and what its output should show.
 
 ## Dependencies
 What this work depends on, and what depends on it.

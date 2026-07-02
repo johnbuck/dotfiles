@@ -51,7 +51,9 @@ get a question.
 - External services or APIs it must talk to?
 - Deployment / where it runs (which host, path, ports).
 - For anything non-trivial, sketch 2–3 viable approaches (one line each, pros/cons), then
-  propose ONE with reasoning and confirm it — don't pick silently.
+  propose ONE with reasoning and confirm it — don't pick silently. The alternatives live in
+  this conversation only: the WRITTEN spec carries the chosen approach, with at most a one-line
+  "chosen over X because Y" — a spec listing multiple selectable options makes the builder pick.
 
 ### Round 4 — security and data
 - Data sensitivity (public, internal, contains secrets/PII).
@@ -66,6 +68,21 @@ get a question.
 - Any monitoring/observability the work needs.
 
 Three rounds is the floor, not the cap. If answers reveal complexity, ask more.
+
+## Ground in the code first — understand, then reuse, then write
+
+Before writing a word of spec, read the actual code (over ssh if the repo is remote):
+
+1. **Inventory the touched surface** — what the code path does today, element by element with
+   file:line (this becomes the spec's "Current behavior (as-is)" section).
+2. **Hunt for reuse** — actively search for existing functions, utilities, and patterns that can
+   serve this work. Propose new code only where no suitable implementation exists; what you find
+   goes in the spec's Reuse ledger so the builder calls it instead of reinventing it.
+3. **Read the North Star / canon for the touched surface** — the governing rules, quoted at
+   write time (this becomes the "North Star check" section).
+
+A spec written from conversation memory instead of the code inherits every misremembering as a
+requirement.
 
 ## Completeness — scope the WHOLE feature
 
