@@ -52,14 +52,22 @@ removes a guard/filter/behavior with no REMOVE line here is drift, full stop.
 | <element> | CHANGE | <exact new behavior> |
 | <element> | REMOVE | <why it is safe to remove> |
 
-## Invariants (must still hold)
-The canonical rules governing this surface that the change must NOT break — from the North Star,
-the schema/reference docs, and the repo's standing rules. For each: **quote the rule verbatim with
-its file path** (verified by reading the file at spec time — a paraphrase from memory is not a
-citation), then state it as a testable condition. Each invariant becomes a regression test in the
-red phase and a live check in validation.
-- **<invariant-handle>** — canon: "<verbatim quote>" (`NORTH_STAR.md § <section>`); testable:
-  <condition a test or command can check>
+## North Star check (must not violate)
+Check the spec against the North Star (and the repo's canonical reference docs) at WRITE time, not
+build time. Quote each rule that governs the touched surface **verbatim with its file path**
+(verified by reading the file — a paraphrase from memory is not a citation), and state how the
+change complies. Each testable rule becomes a regression test in the red phase and a live check in
+validation, so violating the North Star turns a test red.
+Hard rules for this section:
+- Only rules that EXIST in the North Star / canonical reference docs belong here. Never invent a
+  rule locally — a spec-invented "rule" has no authority and can enshrine a bug.
+- If no North Star rule governs this surface, write "none — no North Star rule governs this
+  surface" and move on. If you believe a rule SHOULD exist, that is a North Star update for the
+  operator to make deliberately — not something this spec declares.
+- Non-canonical hard lines (performance bounds, "don't touch X") belong in Constraints below, not
+  here.
+- **<rule-handle>** — "<verbatim quote>" (`NORTH_STAR.md § <section>`); complies by: <how>;
+  testable: <condition a test or command can check>
 
 ## Behavior
 - **Actors / systems:** who or what triggers this, and which external systems/services it touches.
@@ -127,8 +135,9 @@ staging first, state the blast radius of any destructive step.
 
 ## Testing
 What proves it works: unit / integration / end-to-end, the frameworks, and lint/format/type
-gates. Tie each back to the acceptance criteria above — AND to the invariants: every invariant
-gets a regression test (red phase) so breaking a rule turns a test red, not a doc stale.
+gates. Tie each back to the acceptance criteria above — AND to the North Star check: every quoted
+testable rule gets a regression test (red phase) so violating the North Star turns a test red,
+not a doc stale.
 
 ## Dependencies
 What this work depends on, and what depends on it.
