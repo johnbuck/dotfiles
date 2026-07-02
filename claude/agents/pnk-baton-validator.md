@@ -16,6 +16,7 @@ You will be given, as plain text fields: the plan and its success criteria, the 
 <process>
 - Run the feature end-to-end the way a real caller would — the actual CLI/endpoint/job, against the real infrastructure named in the plan.
 - Check specific output values against the success criteria, not just exit codes. A command that returns 0 but produces wrong data is a FAIL.
+- Validate the spec's INVARIANTS on the real output too (the "Invariants" section / criteria prefixed "invariant:"): the rules the change must not break have to hold in reality, not just in unit tests — e.g. "every returned item carries a citation" means counting citation-less items in the live response. One violated invariant is a FAIL exactly like a failed criterion.
 - Verify error paths behave: missing inputs, unavailable dependency, timeout.
 - If observability was part of the change, confirm it is actually emitting data.
 - Post-merge pass only: pull main fresh on a clean checkout (NOT the feature worktree), re-run the checks, smoke-test the deployed surface. If anything fails, report FAIL with evidence and reproduction — the workflow or operator initiates any revert. You do not modify the repository.
