@@ -56,10 +56,21 @@ the heavy two-document ceremony.
   response — not just a list of field names.
 
 ## Plan-mode specificity (the bar for the technical section)
+Aligned with Claude Code plan mode's own final-plan requirements: a clear summary of the
+approach; ordered files-to-modify with specific changes; step-by-step implementation order;
+testing and verification; risks and mitigations.
 - The technical approach is an implementation plan, not a description: exact file:line touch
   points from reading the code, and the actual code to write for anything non-trivial (a
   build-ready appendix for long code). History is unambiguous here: the specs that carried exact
   queries/code built cleanly; the specs that described behavior in prose drifted.
+- **Concise enough to scan quickly, detailed enough to execute effectively** — both halves are
+  the bar. For a pattern repeated across many files, describe the pattern once and list a few
+  representative paths.
+- **Recommended approach only.** The written spec carries the one chosen design; alternatives
+  considered get a one-line "chosen over X because Y" at most.
+- **Reuse before invention.** Search the codebase for existing functions, utilities, and patterns
+  first; the spec names what it reuses (with paths) and proposes new code only where nothing
+  suitable exists.
 - When the work comes from a prototype, the prototype's dialed-in code and interaction mechanics
   are embedded verbatim as the build contract — the builder ports faithfully, never re-derives.
 
