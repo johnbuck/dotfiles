@@ -96,7 +96,16 @@ test. Rules:
 - **<readable-handle>** — <condition>; verified by: <…>
 
 ## Technical approach
-The chosen design and the exact surface it touches:
+The chosen design and the exact surface it touches. **Write this at plan-mode specificity** — the
+bar is an implementation plan a builder can execute without inventing anything, grounded in the
+actual code (read it first), not a prose description of intent:
+- **Exact locations:** file:line / function names for every touch point, from reading the code.
+- **The actual code:** for any non-trivial change, include the code to write — the exact query,
+  the function body, the config block — as a build-ready appendix if long. A spec that says
+  "add a filter" drifts; a spec that shows the filter does not.
+- **Prototype as contract:** when the work comes from a dialed-in prototype, embed the
+  prototype's real code and interaction mechanics verbatim — the builder PORTS them faithfully,
+  never re-derives from a description. The prototype IS the spec's technical content.
 - **Deploy target:** host, deploy path, compose project, ports. State it even if "same as
   existing service X". (Omit for non-deployed/pure-logic work.)
 - **Files:** each path, marked (new) or (modified), one line on what changes in each.
