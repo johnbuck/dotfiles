@@ -39,8 +39,23 @@ Steps:
    - `requireRoadmap` = true only if `--require-roadmap` is present. When set, a missing canonical roadmap is a hard failure; default is warn-and-continue.
    - `northStar` = the value after `--north-star` if present — an explicit path to the project's North Star/vision doc. Else omit (the drift-checker auto-discovers it).
    - `roadmap` = the value after `--roadmap` if present — an explicit path to the canonical roadmap. Else omit (auto-discovered).
-2. Invoke the **Workflow** tool with `name: "pnk-baton"` and `args: { spec, repo, env, base, validate, ssh, worktree, requireRoadmap, northStar, roadmap }` (omit any optional flag not provided; `env` is required and must always be passed). The workflow itself hard-fails if `env` is missing or not `staging`/`prod`.
-3. When it returns, relay the result concisely: the feature branch name, the **target environment**, the gate outcomes (plan criteria count, alignment pre/post-build, tests, review PASS/REJECT, validation), and the exact merge command from the `note` field. Do NOT merge automatically — pnk-baton produces a reviewed branch; the user ships it.
+2. **PRE-FLIGHT: spec structure check — do NOT launch a non-conforming spec.** When `spec` is a file,
+   read it (over ssh when `--ssh` is set) and verify it meets the spec standard BEFORE spending a
+   workflow run (the Align gate would halt on it anyway — catching it here is free):
+   - **Current behavior (as-is)** section with file:line refs — required whenever the spec modifies an
+     existing surface (a brand-new surface must say so explicitly).
+   - **Change map** with KEEP/CHANGE/REMOVE dispositions covering the as-is elements.
+   - **North Star check** section — governing canon rules quoted verbatim with file paths (or an
+     explicit "none — no North Star rule governs this surface"). Spot-check one quote against the
+     cited file. Rules with no canonical source do not count.
+   - A technical section at plan-mode specificity: exact touch points, and the actual code for
+     non-trivial changes (a spec that only *describes* behavior in prose is not build-ready).
+   If any of these is missing, STOP — do not invoke Workflow. Tell the operator exactly what the spec
+   lacks and offer to run the **pnk-spec** skill to bring it up to standard (or fix it directly if the
+   gap is mechanical), then re-run this skill. A raw task description (no spec file) skips this check —
+   but for anything non-trivial, offer pnk-spec first.
+3. Invoke the **Workflow** tool with `name: "pnk-baton"` and `args: { spec, repo, env, base, validate, ssh, worktree, requireRoadmap, northStar, roadmap }` (omit any optional flag not provided; `env` is required and must always be passed). The workflow itself hard-fails if `env` is missing or not `staging`/`prod`.
+4. When it returns, relay the result concisely: the feature branch name, the **target environment**, the gate outcomes (plan criteria count, alignment pre/post-build, tests, review PASS/REJECT, validation), and the exact merge command from the `note` field. Do NOT merge automatically — pnk-baton produces a reviewed branch; the user ships it.
 
 If the workflow returns `status: "BLOCKED"` or `"VALIDATION-FAILED"`, surface the outstanding findings and stop — do not paper over them. **Per the HARD RULE above, keep the branch and reuse its build** (merge-after-fixing-the-shared-blocker, fix-forward, or resume); do not delete it or rebuild from scratch. If it returns `"DRIFT-HALT"` (pre-build) or `"DRIFT-BLOCKED"` (post-build), surface the alignment findings from the `findings`/`drift` fields and stop — the work has drifted from the spec/roadmap/North Star and the operator must reconcile scope before it ships; if the drift is that the work isn't on the roadmap or the spec itself is the problem, offer to run the **pnk-roadmap** or **pnk-spec** skill to reconcile, then re-run pnk-baton (it re-integrates). If it returns `"ROADMAP-MISSING"`, report that no canonical roadmap was found and `--require-roadmap` was set; the branch is built but unmerged pending a roadmap — offer to run the **pnk-roadmap** skill to create one, then re-run pnk-baton.
 
