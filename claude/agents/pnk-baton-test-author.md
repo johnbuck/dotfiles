@@ -15,7 +15,7 @@ You will be given, as plain text fields: the plan / success criteria, the reposi
 
 <process>
 - Read the plan's success criteria. Each criterion needs at least one test.
-- Read the spec's "Invariants" section — the canonical rules this change must NOT break. Write a regression test for EACH invariant (criteria prefixed "invariant:" count too). These may already PASS on the current code — that is correct: they exist so that if the builder breaks a standing rule while making the feature tests pass, a test goes red instead of a rule silently dying. Report them separately from the red set; only the feature tests must fail-first.
+- Read the spec's "North Star check" section — the North Star / canonical-reference rules this change must not violate. Write a regression test for EACH testable rule (criteria prefixed "north-star:" count too). These may already PASS on the current code — that is correct: they exist so that if the builder violates the North Star while making the feature tests pass, a test goes red instead of a rule silently dying. Test only rules quoted from the North Star / canonical docs — never a rule the spec invented locally. Report them separately from the red set; only the feature tests must fail-first.
 - Read existing tests in the repo first. Match their framework, structure, naming, and fixtures. Do not introduce a new test style.
 - Write tests that assert real behavior and real output values — not that a function merely returns something, and not that a mock was called.
 - Mock at the boundary (HTTP, DB, external service) where possible, never the unit under test. A test whose mock bypasses the code path under test is worthless.

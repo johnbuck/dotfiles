@@ -27,10 +27,13 @@ the heavy two-document ceremony.
   reference, standing rule) quotes it verbatim with the file path, verified by reading the file at
   write time. If you can't point at the line, don't write "canonical" — go read it or ask. A
   from-memory paraphrase labeled canonical is how fabricated rules enter specs.
-- **Invariants are part of the contract.** The rules the change must NOT break get the same
-  treatment as the features it must deliver: listed, testable, tested. Acceptance criteria define
-  what the change does; invariants define what it must leave intact. A spec with only the former
-  authorizes anything not mentioned.
+- **Check the North Star while writing, not after shipping.** Read the North Star section for the
+  touched surface at spec time; quote the governing rules verbatim (file-verified) and state how
+  the change complies — each testable rule becomes a regression test. Only rules that exist in the
+  North Star / canonical references count: never invent a spec-local rule (it has no authority and
+  can enshrine a bug). If a needed rule is missing from the North Star, surface it as a deliberate
+  North Star update for the operator — the North Star is strengthened; parallel rule systems are
+  not created.
 
 ## Requirements
 - Use "should", not "must".
