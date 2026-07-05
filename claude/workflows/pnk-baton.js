@@ -11,8 +11,8 @@ export const meta = {
     { title: 'Build', detail: 'builder makes tests pass (green); loops with review' },
     { title: 'Integrate', detail: 'merge latest base into the branch' },
     { title: 'Review', detail: 'independent reviewers, one per dimension, in parallel' },
-    { title: 'Accept', detail: 'drift-checker: post-build UAT of the diff vs roadmap / North Star' },
-    { title: 'Validate', detail: 'optional real-infrastructure end-to-end check' },
+    { title: 'Validate', detail: 'optional real-infrastructure end-to-end check (before Accept — its measurements are gate evidence)' },
+    { title: 'Accept', detail: 'drift-checker: post-build UAT of the diff vs roadmap / North Star, with the validation record in evidence' },
     { title: 'Document', detail: 'record as-built + lessons into the spec' },
     { title: 'Merge', detail: 'fast-forward base to the branch (local, no push); clean up worktree' },
   ],
@@ -397,12 +397,33 @@ for (let attempt = 0; attempt <= maxRetries; attempt++) {
   }
 }
 
+// ---- Validate (runs BEFORE the Accept drift gate: a spec criterion demanding a
+// "recorded live check" is judged against THIS stage's measured output — the gate
+// must never demand an artifact only a later stage produces) ------------------
+let validation = null
+if (shipped && wantValidate) {
+  phase('Validate')
+  validation = await agent(
+    `You are the pnk-baton VALIDATOR (pre-merge pass).\n${fields}${goalNote}${envNote}\n\nRun the feature end-to-end against the ${env} infrastructure on ${branch}. Judge output against the success criteria — wrong data with exit 0 is a FAIL, and output that satisfies the letter of a criterion while missing THE GOAL is a FAIL (say which).\n\nYour report IS the run's recorded live check: the Accept gate judges "recorded live measurement" criteria against it, and the Document stage persists it into the spec's as-built. So put the CONCRETE MEASURED NUMBERS in \`evidence\` (counts, latencies, coverage X/Y, before-vs-after) — "it works" is not a measurement.\n\nALSO validate the spec's NORTH STAR CHECK live (the spec's "North Star check" section / criteria prefixed "north-star:"): the North Star rules governing this surface must hold on the REAL output, not just in unit tests — e.g. if the North Star says every item carries its real source links, count citation-less items in the actual response; one violation is a FAIL exactly like a failed success criterion. Report each rule's observed-vs-expected alongside the criteria.${isProd ? ' This is a PRODUCTION-targeted run: validation is MANDATORY — SKIPPED is NOT acceptable (a SKIP blocks the ship). Only PASS clears it.' : ' If the infrastructure is genuinely unavailable, report SKIPPED with the reason; do not fake a pass.'}\n\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}`,
+    { agentType: 'pnk-baton-validator', phase: 'Validate', schema: VALID },
+  )
+  log(`Validation: ${validation.status}`)
+  if (validation.status === 'FAIL') {
+    return { status: 'VALIDATION-FAILED', branch, base, worktree: workdir, reason: 'Real-infrastructure validation FAILED (before the Accept gate). Branch left intact for fix-forward — do not delete it.', validation, plan }
+  }
+}
+
 // ---- Accept: post-build drift gate (UAT the finished diff before shipping) --
 let accept = null
 if (shipped) {
   phase('Accept')
+  const validationEvidence = validation
+    ? `\n\nVALIDATION RECORD (this run's live check — it already ran, BEFORE this gate; the Document stage persists it into the spec's as-built):\n${JSON.stringify(validation)}\n\nA spec acceptance criterion that requires a live/recorded measurement is judged against THIS record: if it contains the required measurement and it passed, the criterion is SATISFIED — do NOT flag the absence of an impl-log/as-built file (the Document stage writes that AFTER this gate, and it embeds this record). Flag drift only if this record is missing the required measurement or shows it failing.`
+    : (wantValidate
+        ? '\n\nNOTE: a validation stage was requested but produced no record. Treat spec criteria that require a recorded live check as UNMET.'
+        : '\n\nNOTE: no validation stage was requested for this run (staging without --validate and the plan did not demand one). If the spec\'s acceptance criteria REQUIRE a recorded live check, report that as a finding recommending a re-run with --validate — do not demand an artifact no stage of this run configuration produces.')
   accept = await agent(
-    `You are the pnk-baton DRIFT-CHECKER in **post-build** mode. The work is built, tested, and the adversarial reviewers PASSED. Perform user-acceptance-style alignment validation on the ACTUAL diff before it ships.\n${fields}${goalNote}\n\n${driftNote}${envNote}\n\nRead the branch's own change: \`git -C ${workdir} diff $(git -C ${workdir} merge-base ${base} HEAD)..HEAD\`. ${base} is integrated, so incoming ${base} commits/deletions are NOT this branch's change — never judge them.\n\nSpec being implemented: ${spec}\nPlanner summary: ${plan.summary}\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}\n\nRun these three MANDATORY audits (each produces explicit output, not a holistic impression):\n1. **Deletion audit** — from the diff, list EVERY behavior-shaping element the change removed or weakened: each deleted/bypassed filter, limit, guard, gate, predicate, fallback, or check (look at removed lines, not just added ones — removals are where silent scope change lives). Match each against the spec's change-map REMOVE lines. A removal with no authorizing REMOVE line in the spec is DRIFT (axis: spec, severity High minimum), no matter how good the builder's reason was — cite the removed code and the spec's silence as evidence.\n2. **Principle checklist** — for the surface this change touches, enumerate the governing North Star principles/rules ONE BY ONE and verdict each individually (holds / violated, with evidence from the diff or, where checkable, the running behavior). Do not compress this into one overall judgment — a checklist cannot skip an item; a judgment can.\n3. **Canon staleness** — does the shipped behavior make any sentence of the North Star / canonical references stale (the code now rightly does something the canon doesn't say, or says differently)? List each stale sentence in \`canonStale\` (quote + file) so the operator can update the canon deliberately. Staleness alone is not DRIFT — silent divergence is; reporting it here is what keeps it non-silent.\n\nTHEN confirm the SHIPPED work still aligns: did it drift from the plan/spec during build? Does the completed change actually deliver a roadmap item (acceptance), or solve something adjacent? Did it silently lose data, take a destructive/irreversible action, or skip staging? Honor project-north-star, baton-principles, how-we-do-things, spec, roadmap. Judge neutrally. DRIFT on genuine Critical/High/MEDIUM misalignment, every blocking finding citing concrete evidence (or downgrade to Optional); ROADMAP-MISSING only when a missing roadmap is the sole blocking issue; otherwise ALIGNED. Do not over-block correct, minimal, on-roadmap work, and do not rubber-stamp drift.`,
+    `You are the pnk-baton DRIFT-CHECKER in **post-build** mode. The work is built, tested, and the adversarial reviewers PASSED. Perform user-acceptance-style alignment validation on the ACTUAL diff before it ships.\n${fields}${goalNote}\n\n${driftNote}${envNote}\n\nRead the branch's own change: \`git -C ${workdir} diff $(git -C ${workdir} merge-base ${base} HEAD)..HEAD\`. ${base} is integrated, so incoming ${base} commits/deletions are NOT this branch's change — never judge them.\n\nSpec being implemented: ${spec}\nPlanner summary: ${plan.summary}\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}\n\nRun these three MANDATORY audits (each produces explicit output, not a holistic impression):\n1. **Deletion audit** — from the diff, list EVERY behavior-shaping element the change removed or weakened: each deleted/bypassed filter, limit, guard, gate, predicate, fallback, or check (look at removed lines, not just added ones — removals are where silent scope change lives). Match each against the spec's change-map REMOVE lines. A removal with no authorizing REMOVE line in the spec is DRIFT (axis: spec, severity High minimum), no matter how good the builder's reason was — cite the removed code and the spec's silence as evidence.\n2. **Principle checklist** — for the surface this change touches, enumerate the governing North Star principles/rules ONE BY ONE and verdict each individually (holds / violated, with evidence from the diff or, where checkable, the running behavior). Do not compress this into one overall judgment — a checklist cannot skip an item; a judgment can.\n3. **Canon staleness** — does the shipped behavior make any sentence of the North Star / canonical references stale (the code now rightly does something the canon doesn't say, or says differently)? List each stale sentence in \`canonStale\` (quote + file) so the operator can update the canon deliberately. Staleness alone is not DRIFT — silent divergence is; reporting it here is what keeps it non-silent.\n\nTHEN confirm the SHIPPED work still aligns: did it drift from the plan/spec during build? Does the completed change actually deliver a roadmap item (acceptance), or solve something adjacent? Did it silently lose data, take a destructive/irreversible action, or skip staging? Honor project-north-star, baton-principles, how-we-do-things, spec, roadmap. Judge neutrally. DRIFT on genuine Critical/High/MEDIUM misalignment, every blocking finding citing concrete evidence (or downgrade to Optional); ROADMAP-MISSING only when a missing roadmap is the sole blocking issue; otherwise ALIGNED. Do not over-block correct, minimal, on-roadmap work, and do not rubber-stamp drift.${validationEvidence}`,
     { agentType: 'pnk-baton-drift-checker', phase: 'Accept', label: 'accept:post-build', schema: DRIFT },
   )
   log(`Accept: ${accept.status} (roadmap=${accept.roadmapFound}); ${blockingFindings(accept).length} blocking / ${(accept.findings || []).length} total finding(s)`)
@@ -417,23 +438,12 @@ if (shipped) {
   }
 }
 
-// ---- Validate (optional) ---------------------------------------------------
-let validation = null
-if (shipped && wantValidate) {
-  phase('Validate')
-  validation = await agent(
-    `You are the pnk-baton VALIDATOR (pre-merge pass).\n${fields}${goalNote}${envNote}\n\nRun the feature end-to-end against the ${env} infrastructure on ${branch}. Judge output against the success criteria — wrong data with exit 0 is a FAIL, and output that satisfies the letter of a criterion while missing THE GOAL is a FAIL (say which).\n\nALSO validate the spec's NORTH STAR CHECK live (the spec's "North Star check" section / criteria prefixed "north-star:"): the North Star rules governing this surface must hold on the REAL output, not just in unit tests — e.g. if the North Star says every item carries its real source links, count citation-less items in the actual response; one violation is a FAIL exactly like a failed success criterion. Report each rule's observed-vs-expected alongside the criteria.${isProd ? ' This is a PRODUCTION-targeted run: validation is MANDATORY — SKIPPED is NOT acceptable (a SKIP blocks the ship). Only PASS clears it.' : ' If the infrastructure is genuinely unavailable, report SKIPPED with the reason; do not fake a pass.'}\n\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}`,
-    { agentType: 'pnk-baton-validator', phase: 'Validate', schema: VALID },
-  )
-  log(`Validation: ${validation.status}`)
-}
-
 // ---- Document: capture as-built + lessons into the spec (lands with merge) --
 let documented = null
 if (shipped) {
   phase('Document')
   documented = await agent(
-    `You are the pnk-baton DOCUMENTER. The work is complete and reviewed. Update the spec to be an accurate as-built record.\n${fields}${goalNote}\n\nThe spec file to update is: ${specInWorktree}\n${specRel ? `This is the spec's copy INSIDE your worktree — edit it (NOT the original at ${spec}) so the documentation lands with the branch.` : `This spec is NOT tracked in this repo; update it in place and report SKIPPED (it can't ride the branch).`}\n\nAppend an "Implementation log / as-built" section: what actually changed (files + essence of \`git diff $(git merge-base ${base} HEAD)..HEAD\`), key decisions and any deviation from the plan, how each planner open question was resolved, lessons learned, and how to verify. Preserve the original spec; ADD the record. ${specRel ? `Commit on ${branch}: docs(spec): as-built ${specName} and report DOCUMENTED.` : ''}\n\nPlanner open questions to resolve:\n${(plan.openQuestions || []).map((q, n) => `${n + 1}. ${q}`).join('\n') || '(none)'}`,
+    `You are the pnk-baton DOCUMENTER. The work is complete and reviewed. Update the spec to be an accurate as-built record.\n${fields}${goalNote}\n\nThe spec file to update is: ${specInWorktree}\n${specRel ? `This is the spec's copy INSIDE your worktree — edit it (NOT the original at ${spec}) so the documentation lands with the branch.` : `This spec is NOT tracked in this repo; update it in place and report SKIPPED (it can't ride the branch).`}\n\nAppend an "Implementation log / as-built" section: what actually changed (files + essence of \`git diff $(git merge-base ${base} HEAD)..HEAD\`), key decisions and any deviation from the plan, how each planner open question was resolved, lessons learned, and how to verify.${validation ? ` EMBED the validation record VERBATIM as the recorded live check (measured numbers included): ${JSON.stringify(validation)}` : ''} Preserve the original spec; ADD the record. ${specRel ? `Commit on ${branch}: docs(spec): as-built ${specName} and report DOCUMENTED.` : ''}\n\nPlanner open questions to resolve:\n${(plan.openQuestions || []).map((q, n) => `${n + 1}. ${q}`).join('\n') || '(none)'}`,
     {
       agentType: 'pnk-baton-documenter',
       phase: 'Document',
