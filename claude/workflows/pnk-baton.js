@@ -378,6 +378,11 @@ for (let attempt = 0; attempt <= maxRetries; attempt++) {
   )
 
   const good = reviews.filter(Boolean)
+  if (good.length < dimensions.length) {
+    // A null review = the reviewer agent died (terminal API error, e.g. 529) — an
+    // absent verdict is NOT a pass. End cleanly; resume re-runs the dead agents.
+    return { status: 'INFRA-FAILED', branch, base, worktree: workdir, reason: `${dimensions.length - good.length} reviewer agent(s) died on API errors (no verdict). Branch intact — resume with resumeFromRunId to re-run them.`, plan }
+  }
   const rejects = good.filter((r) => r.status === 'REJECT')
   confirmed = good.flatMap((r) => (r.findings || []).filter((f) => f.severity === 'Critical' || f.severity === 'High' || f.severity === 'Medium'))
 
@@ -407,6 +412,10 @@ if (shipped && wantValidate) {
     `You are the pnk-baton VALIDATOR (pre-merge pass).\n${fields}${goalNote}${envNote}\n\nRun the feature end-to-end against the ${env} infrastructure on ${branch}. Judge output against the success criteria — wrong data with exit 0 is a FAIL, and output that satisfies the letter of a criterion while missing THE GOAL is a FAIL (say which).\n\nYour report IS the run's recorded live check: the Accept gate judges "recorded live measurement" criteria against it, and the Document stage persists it into the spec's as-built. So put the CONCRETE MEASURED NUMBERS in \`evidence\` (counts, latencies, coverage X/Y, before-vs-after) — "it works" is not a measurement.\n\nALSO validate the spec's NORTH STAR CHECK live (the spec's "North Star check" section / criteria prefixed "north-star:"): the North Star rules governing this surface must hold on the REAL output, not just in unit tests — e.g. if the North Star says every item carries its real source links, count citation-less items in the actual response; one violation is a FAIL exactly like a failed success criterion. Report each rule's observed-vs-expected alongside the criteria.${isProd ? ' This is a PRODUCTION-targeted run: validation is MANDATORY — SKIPPED is NOT acceptable (a SKIP blocks the ship). Only PASS clears it.' : ' If the infrastructure is genuinely unavailable, report SKIPPED with the reason; do not fake a pass.'}\n\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}`,
     { agentType: 'pnk-baton-validator', phase: 'Validate', schema: VALID },
   )
+  if (!validation) {
+    // Validator agent died (terminal API error) — no verdict is not a verdict.
+    return { status: 'INFRA-FAILED', branch, base, worktree: workdir, reason: 'Validator agent died on an API error (no verdict). Branch intact — resume with resumeFromRunId to re-run validation.', plan }
+  }
   log(`Validation: ${validation.status}`)
   if (validation.status === 'FAIL') {
     return { status: 'VALIDATION-FAILED', branch, base, worktree: workdir, reason: 'Real-infrastructure validation FAILED (before the Accept gate). Branch left intact for fix-forward — do not delete it.', validation, plan }
