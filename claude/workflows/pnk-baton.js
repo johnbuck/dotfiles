@@ -339,7 +339,7 @@ for (let attempt = 0; attempt <= maxRetries; attempt++) {
   const build = await agent(
     `You are the pnk-baton BUILDER (the single writer).\n${fields}${goalNote}\n\nWhen a local implementation decision arises that the spec/plan does not settle, choose the option that serves THE GOAL above; if the goal does not settle it either, make the safest minimal choice and list it in \`flagged\` — never silently pick what is locally convenient.\n\nMake these tests pass with the minimum correct code. Run \`${tests.runCommand}\`. DO NOT modify any test file. Stay on ${branch} in this worktree. Commit on the feature branch: feat: ${specName}.${baselineNote}\n\nReport testsPass=true when your target tests pass AND the branch introduces NO NEW failures vs the baseline above — a test that also fails on ${base} (in the baseline list) is pre-existing debt, is NOT yours to fix, and does NOT keep testsPass from being true. Never edit a test to silence it. If your only remaining failures are pre-existing baseline ones, report testsPass=true and list them in \`flagged\` as pre-existing.\n\n**Final report:** your StructuredOutput MUST set \`testsPass\` (boolean) FIRST, then a \`summary\` of AT MOST 3 sentences — do not write a long essay, the committed diff is the record.\n\nPlan approach:\n${plan.approach}\n` +
       (priorFindings ? `\nThe reviewers REJECTED the previous attempt. Address every Critical, High, and Medium finding below, then re-run the tests:\n${priorFindings}` : ''),
-    { agentType: 'pnk-baton-builder', phase: 'Build', label: `build:attempt-${attempt + 1}`, schema: BUILD },
+    { agentType: 'pnk-baton-builder', phase: 'Build', label: `build:attempt-${attempt + 1}`, schema: BUILD, model: 'opus' },
   )
   if (!build) {
     return { status: 'INFRA-FAILED', branch, base, worktree: workdir, reason: `Builder agent died (API error / session limit) on attempt ${attempt + 1} — no build result. The branch may hold partial work; resume this run rather than relaunching fresh.`, plan }
@@ -349,7 +349,7 @@ for (let attempt = 0; attempt <= maxRetries; attempt++) {
   phase('Integrate')
   const integ = await agent(
     `You are the pnk-baton INTEGRATOR.\n${fields}\n\nIntegrate the latest ${base} into ${branch} (in this worktree) so the branch stays mergeable and the review diff is clean. Refresh ${base}, then \`git merge --no-ff ${base}\` into ${branch} (do NOT rebase). A large incoming changeset or many deletions coming from ${base} is EXPECTED — that is other people's work that has landed on ${base}, never something for you to undo or worry about. On a clean merge: re-run \`${tests.runCommand}\`. On conflict: \`git merge --abort\` and report CONFLICT with the conflicting paths; do NOT resolve it yourself.${baselineNote}\n\ntestsPass means NO NEW failures vs ${base}, NOT an all-green suite: after re-running, compute newFailures = (tests failing now) MINUS (the baseline list above), matching by test identifier. Report testsPass=true iff newFailures is empty. Pre-existing baseline failures do NOT count and must NEVER trigger a rebuild (the builder cannot fix non-branch code — looping on base debt is the bug this guards against). Put any NEW failures in \`newFailures\` and \`detail\`; if there are none, report CLEAN + testsPass=true even when the raw suite still shows baseline reds.`,
-    { agentType: 'pnk-baton-integrator', phase: 'Integrate', label: `integrate:attempt-${attempt + 1}`, schema: INTEG },
+    { agentType: 'pnk-baton-integrator', phase: 'Integrate', label: `integrate:attempt-${attempt + 1}`, schema: INTEG, model: 'opus' },
   )
   if (!integ) {
     return { status: 'INFRA-FAILED', branch, base, worktree: workdir, reason: `Integrator agent died (API error / session limit) on attempt ${attempt + 1} — no integrate result. Resume this run rather than relaunching fresh.`, plan }
@@ -378,7 +378,7 @@ for (let attempt = 0; attempt <= maxRetries; attempt++) {
             ? `Additionally confirm the BUILDER did not modify any test file (git diff the test paths vs the test-author's commit) — if it did, REJECT. `
             : '') +
           `Flag only gaps that affect correctness or the stated requirements; mark anything else Optional.\n\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}`,
-        { agentType: 'pnk-baton-reviewer', phase: 'Review', label: `review:${d}`, schema: VERDICT },
+        { agentType: 'pnk-baton-reviewer', phase: 'Review', label: `review:${d}`, schema: VERDICT, model: 'opus' },
       ),
     ),
   )
@@ -416,7 +416,7 @@ if (shipped && wantValidate) {
   phase('Validate')
   validation = await agent(
     `You are the pnk-baton VALIDATOR (pre-merge pass).\n${fields}${goalNote}${envNote}\n\nRun the feature end-to-end against the ${env} infrastructure on ${branch}. Judge output against the success criteria — wrong data with exit 0 is a FAIL, and output that satisfies the letter of a criterion while missing THE GOAL is a FAIL (say which).\n\nYour report IS the run's recorded live check: the Accept gate judges "recorded live measurement" criteria against it, and the Document stage persists it into the spec's as-built. So put the CONCRETE MEASURED NUMBERS in \`evidence\` (counts, latencies, coverage X/Y, before-vs-after) — "it works" is not a measurement.\n\nALSO validate the spec's NORTH STAR CHECK live (the spec's "North Star check" section / criteria prefixed "north-star:"): the North Star rules governing this surface must hold on the REAL output, not just in unit tests — e.g. if the North Star says every item carries its real source links, count citation-less items in the actual response; one violation is a FAIL exactly like a failed success criterion. Report each rule's observed-vs-expected alongside the criteria.${isProd ? ' This is a PRODUCTION-targeted run: validation is MANDATORY — SKIPPED is NOT acceptable (a SKIP blocks the ship). Only PASS clears it.' : ' If the infrastructure is genuinely unavailable, report SKIPPED with the reason; do not fake a pass.'}\n\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}`,
-    { agentType: 'pnk-baton-validator', phase: 'Validate', schema: VALID },
+    { agentType: 'pnk-baton-validator', phase: 'Validate', schema: VALID, model: 'opus' },
   )
   if (!validation) {
     // Validator agent died (terminal API error) — no verdict is not a verdict.
@@ -439,7 +439,7 @@ if (shipped) {
         : '\n\nNOTE: no validation stage was requested for this run (staging without --validate and the plan did not demand one). If the spec\'s acceptance criteria REQUIRE a recorded live check, report that as a finding recommending a re-run with --validate — do not demand an artifact no stage of this run configuration produces.')
   accept = await agent(
     `You are the pnk-baton DRIFT-CHECKER in **post-build** mode. The work is built, tested, and the adversarial reviewers PASSED. Perform user-acceptance-style alignment validation on the ACTUAL diff before it ships.\n${fields}${goalNote}\n\n${driftNote}${envNote}\n\nRead the branch's own change: \`git -C ${workdir} diff $(git -C ${workdir} merge-base ${base} HEAD)..HEAD\`. ${base} is integrated, so incoming ${base} commits/deletions are NOT this branch's change — never judge them.\n\nSpec being implemented: ${spec}\nPlanner summary: ${plan.summary}\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}\n\nRun these three MANDATORY audits (each produces explicit output, not a holistic impression):\n1. **Deletion audit** — from the diff, list EVERY behavior-shaping element the change removed or weakened: each deleted/bypassed filter, limit, guard, gate, predicate, fallback, or check (look at removed lines, not just added ones — removals are where silent scope change lives). Match each against the spec's change-map REMOVE lines. A removal with no authorizing REMOVE line in the spec is DRIFT (axis: spec, severity High minimum), no matter how good the builder's reason was — cite the removed code and the spec's silence as evidence.\n2. **Principle checklist** — for the surface this change touches, enumerate the governing North Star principles/rules ONE BY ONE and verdict each individually (holds / violated, with evidence from the diff or, where checkable, the running behavior). Do not compress this into one overall judgment — a checklist cannot skip an item; a judgment can.\n3. **Canon staleness** — does the shipped behavior make any sentence of the North Star / canonical references stale (the code now rightly does something the canon doesn't say, or says differently)? List each stale sentence in \`canonStale\` (quote + file) so the operator can update the canon deliberately. Staleness alone is not DRIFT — silent divergence is; reporting it here is what keeps it non-silent.\n\nTHEN confirm the SHIPPED work still aligns: did it drift from the plan/spec during build? Does the completed change actually deliver a roadmap item (acceptance), or solve something adjacent? Did it silently lose data, take a destructive/irreversible action, or skip staging? Honor project-north-star, baton-principles, how-we-do-things, spec, roadmap. Judge neutrally. DRIFT on genuine Critical/High/MEDIUM misalignment, every blocking finding citing concrete evidence (or downgrade to Optional); ROADMAP-MISSING only when a missing roadmap is the sole blocking issue; otherwise ALIGNED. Do not over-block correct, minimal, on-roadmap work, and do not rubber-stamp drift.${validationEvidence}`,
-    { agentType: 'pnk-baton-drift-checker', phase: 'Accept', label: 'accept:post-build', schema: DRIFT },
+    { agentType: 'pnk-baton-drift-checker', phase: 'Accept', label: 'accept:post-build', schema: DRIFT, model: 'opus' },
   )
   log(`Accept: ${accept.status} (roadmap=${accept.roadmapFound}); ${blockingFindings(accept).length} blocking / ${(accept.findings || []).length} total finding(s)`)
 
@@ -463,6 +463,7 @@ if (shipped) {
       agentType: 'pnk-baton-documenter',
       phase: 'Document',
       label: 'document',
+      model: 'opus',
       schema: {
         type: 'object', additionalProperties: false,
         properties: { status: { enum: ['DOCUMENTED', 'SKIPPED'] }, specPath: { type: 'string' }, summary: { type: 'string' } },
@@ -488,7 +489,7 @@ if (shipped && wantMerge && validationOk) {
     : `You are performing the pnk-baton STAGING MERGE. All gates passed and this is an --env staging run, so land ${branch} on the STAGING integration branch '${stagingBranch}' — NOT on ${base}/main. Do NOT push to any remote, and NEVER touch ${base}/main.${remoteNote}\nOriginal repository: ${repo}\nFeature branch: ${branch}\nStaging branch: ${stagingBranch}\nPer-run feature worktree: ${workdir}\n\n1. Ensure the staging branch exists: if \`git -C ${repo} show-ref --verify --quiet refs/heads/${stagingBranch}\` fails, create it off ${base}: \`git -C ${repo} branch ${stagingBranch} ${base}\`.\n2. A --no-ff merge needs a working tree. Find an existing worktree for ${stagingBranch} in \`git -C ${repo} worktree list\` and use it; otherwise add a temporary one: \`git -C ${repo} worktree add /tmp/pnk-staging-merge ${stagingBranch}\` (reuse if it already exists).\n3. In that staging worktree, merge the feature with an explicit merge commit: \`git -C <staging-worktree> merge --no-ff ${branch} -m "merge: ${branch} into ${stagingBranch} (staging-validated, env=staging)"\`. If it CONFLICTS: \`git -C <staging-worktree> merge --abort\` and report NOT_FF with the conflicting paths in detail; do NOT resolve.\n4. On a clean merge report MERGED with the new ${stagingBranch} commit sha (as baseCommit).\n5. On MERGED only, remove the per-run FEATURE worktree: \`git -C ${repo} worktree remove --force ${workdir} && git -C ${repo} worktree prune\`. LEAVE the ${stagingBranch} branch and its worktree in place.\nNever push. Never --force a merge. Never rebase. Never modify code or tests. Never advance ${base}/main.`
   merge = await agent(
     mergePrompt,
-    { agentType: 'pnk-baton-merger', phase: 'Merge', label: 'merge', schema: MERGE },
+    { agentType: 'pnk-baton-merger', phase: 'Merge', label: 'merge', schema: MERGE, model: 'opus' },
   )
   log(`Merge: ${merge.status}${merge.baseCommit ? ` -> ${mergeTarget} @ ${merge.baseCommit}` : ''}`)
 }
