@@ -378,7 +378,10 @@ for (let attempt = 0; attempt <= maxRetries; attempt++) {
             ? `Additionally confirm the BUILDER did not modify any test file (git diff the test paths vs the test-author's commit) — if it did, REJECT. `
             : '') +
           `Flag only gaps that affect correctness or the stated requirements; mark anything else Optional.\n\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}`,
-        { agentType: 'pnk-baton-reviewer', phase: 'Review', label: `review:${d}`, schema: VERDICT, model: 'opus' },
+        // label carries the attempt: review verdicts are per-diff, and the resume
+        // cache keys on (prompt, opts) — without the attempt, round N replays
+        // round 1's stale verdict against a new diff and the loop never converges.
+        { agentType: 'pnk-baton-reviewer', phase: 'Review', label: `review:${d}:attempt-${attempt + 1}`, schema: VERDICT, model: 'opus' },
       ),
     ),
   )
