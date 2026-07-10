@@ -341,6 +341,9 @@ for (let attempt = 0; attempt <= maxRetries; attempt++) {
       (priorFindings ? `\nThe reviewers REJECTED the previous attempt. Address every Critical, High, and Medium finding below, then re-run the tests:\n${priorFindings}` : ''),
     { agentType: 'pnk-baton-builder', phase: 'Build', label: `build:attempt-${attempt + 1}`, schema: BUILD },
   )
+  if (!build) {
+    return { status: 'INFRA-FAILED', branch, base, worktree: workdir, reason: `Builder agent died (API error / session limit) on attempt ${attempt + 1} — no build result. The branch may hold partial work; resume this run rather than relaunching fresh.`, plan }
+  }
   log(`Build attempt ${attempt + 1}: testsPass=${build.testsPass}${build.flagged?.length ? ` (flagged: ${build.flagged.join('; ')})` : ''}`)
 
   phase('Integrate')
@@ -348,6 +351,9 @@ for (let attempt = 0; attempt <= maxRetries; attempt++) {
     `You are the pnk-baton INTEGRATOR.\n${fields}\n\nIntegrate the latest ${base} into ${branch} (in this worktree) so the branch stays mergeable and the review diff is clean. Refresh ${base}, then \`git merge --no-ff ${base}\` into ${branch} (do NOT rebase). A large incoming changeset or many deletions coming from ${base} is EXPECTED — that is other people's work that has landed on ${base}, never something for you to undo or worry about. On a clean merge: re-run \`${tests.runCommand}\`. On conflict: \`git merge --abort\` and report CONFLICT with the conflicting paths; do NOT resolve it yourself.${baselineNote}\n\ntestsPass means NO NEW failures vs ${base}, NOT an all-green suite: after re-running, compute newFailures = (tests failing now) MINUS (the baseline list above), matching by test identifier. Report testsPass=true iff newFailures is empty. Pre-existing baseline failures do NOT count and must NEVER trigger a rebuild (the builder cannot fix non-branch code — looping on base debt is the bug this guards against). Put any NEW failures in \`newFailures\` and \`detail\`; if there are none, report CLEAN + testsPass=true even when the raw suite still shows baseline reds.`,
     { agentType: 'pnk-baton-integrator', phase: 'Integrate', label: `integrate:attempt-${attempt + 1}`, schema: INTEG },
   )
+  if (!integ) {
+    return { status: 'INFRA-FAILED', branch, base, worktree: workdir, reason: `Integrator agent died (API error / session limit) on attempt ${attempt + 1} — no integrate result. Resume this run rather than relaunching fresh.`, plan }
+  }
   if (integ.status === 'CONFLICT') {
     return { status: 'CONFLICT-HALT', branch, base, worktree: workdir, reason: `Merging ${base} into ${branch} conflicts — operator must resolve`, detail: integ.detail, plan }
   }
