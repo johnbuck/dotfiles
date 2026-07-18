@@ -149,5 +149,23 @@ fi
 if has 'docker[[:space:]]+(exec|run)[^|]*[[:space:]](env|printenv)([[:space:]]*$|[[:space:]]*['"'"'"]?$)' && ! has 'wc[[:space:]]+-c'; then
   deny "secret-leak-guard: dumping a container's full environment surfaces its secrets. Check one var's length: \`docker exec <c> sh -c 'printenv NAME | wc -c'\`."
 fi
+# ── process argv / environ dumps (the read side) ─────────────────────────────
+# A running process's argv (`ps`/`pgrep -a`) or its /proc environ can hold a secret
+# passed on a command line — an injected `infisical run --token=<JWT>`, a `--password=`,
+# a curl `-d '{"clientSecret":…}'`. Listing them surfaces that value into context.
+# Liveness checks that DON'T print args stay allowed: `pgrep NAME`, `pgrep -l`,
+# `pidof`, `docker ps`, `ps -o pid,stat,comm`.
+if has '(^|[^[:alnum:]_-])pgrep[[:space:]][^|;&]*(-[A-Za-z]*a[A-Za-z]*|--list-full)'; then
+  deny "secret-leak-guard: \`pgrep -a\`/\`--list-full\` prints each process's full command line, which can hold a secret passed in argv (e.g. an injected \`--token=\`). Get PIDs only (\`pgrep NAME\`) or names (\`pgrep -l\`)."
+fi
+if has '(^|[^[:alnum:]_-])ps[[:space:]]+-?[A-Za-z]*a[A-Za-z]*x' \
+   || has '(^|[^[:alnum:]_-])ps[[:space:]]+[^|;&]*-[A-Za-z]*([eA][A-Za-z]*[fF]|[fF][A-Za-z]*[eA])' \
+   || has '(^|[^[:alnum:]_-])ps[[:space:]]+[^|;&]*-o[[:space:]]*[^|;&]*(args|command|cmd)([^A-Za-z]|$)'; then
+  deny "secret-leak-guard: this \`ps\` shows other processes' full command lines (the args column), which can hold a secret passed in argv (e.g. an injected \`--token=\`). Use an args-free format (\`ps -o pid,stat,comm\`) or check a specific PID."
+fi
+if has '/proc/[^/[:space:]]+/environ' \
+   || { has '/proc/[^/[:space:]]+/cmdline' && has '(^|[^[:alnum:]_-])(cat|bat|tac|nl|head|tail|less|more|most|view|xxd|hexdump|od|strings|tr|grep|egrep|fgrep|rg|ag|xargs)([[:space:]])'; }; then
+  deny "secret-leak-guard: reading \`/proc/<pid>/environ\` or \`cmdline\` dumps that process's environment or arguments, which routinely include secrets. Don't read it; there is almost always a targeted check that doesn't."
+fi
 
 exit 0

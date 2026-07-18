@@ -16,6 +16,7 @@ any of these is compromised at the moment it lands — there is no clean-up, onl
 | `docker exec <c> env` / `docker inspect <c>` | Container env + config carry secrets | `docker exec <c> sh -c 'printenv NAME \| wc -c'` |
 | `set -x` / `bash -x` around a secret command | Traces every arg, incl. the value | Never trace auth/secret flows; use controlled output |
 | Secret in argv: `--value "$S"`, `-d "{\"k\":\"$S\"}"`, `--password "$S"` | argv is world-readable via `ps` and saved to history | Pass via **stdin** or `-d @file` / `--file=file` (chmod 600) |
+| Reading *another* process: `ps aux`/`ps -ef`/`pgrep -a`/`cat /proc/<pid>/environ` | Prints other processes' argv/env, which may hold an injected `--token=`/`--password=`/key | Liveness with no args: `pgrep NAME`, `pgrep -l`, `pidof`, `docker ps`, `ps -o pid,stat,comm` |
 | `curl …/secrets/raw …` without piping | Response body is plaintext secrets | Pipe to `jq` extracting only what's needed, into a file/var |
 | Pasting a secret into a chat message / tool result to "move it" | It's now in the transcript forever | 600 tempfile + `scp` + `shred -u` on every hop |
 | Committing a `.env` / token | Lives in git history even if deleted | `.gitignore` + a pre-commit secret scanner (gitleaks/grep) |

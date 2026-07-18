@@ -45,7 +45,17 @@ for f in "$REPO"/secrets/*.example; do
   cp "$f" "$DEST/secrets/$(basename "$f")"
 done
 
-say "config + agents + commands + secret templates installed"
+# plugins/: portable opencode plugins (e.g. the pnk-guardrails secret + destructive-command guard)
+if [ -d "$REPO/plugins" ]; then
+  mkdir -p "$DEST/plugins"
+  for f in "$REPO"/plugins/*.js; do
+    [ -e "$f" ] || continue
+    backup_if_exists "$DEST/plugins/$(basename "$f")"
+    cp "$f" "$DEST/plugins/"
+  done
+fi
+
+say "config + agents + commands + plugins + secret templates installed"
 
 cat <<EOF
 
