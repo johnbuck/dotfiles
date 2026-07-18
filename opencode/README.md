@@ -13,6 +13,7 @@ key files live only on each machine and are never committed.
 | `agents/build.md` | Custom `build` agent. |
 | `commands/*.md` | Custom commands: `memory-status`, `recall`, `remember`, `voice`. |
 | `secrets/*.example` | Placeholder templates listing which key files to create. **No real values.** |
+| `plugins/pnk-guardrails.js` | Guardrails plugin: hard-blocks catastrophic commands and secret-into-context leaks (including `ps aux`/`pgrep -a` argv dumps and `.env` reads), plus best-effort nudges. Toggle with `PNK_GUARDRAILS=on\|nonudge\|off`. |
 | `install.sh` | Deploys into `~/.config/opencode/`, backing up anything it overwrites. |
 
 ## Placeholders to fill in

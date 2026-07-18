@@ -48,6 +48,10 @@ normal output includes the value.
 - `infisical secrets get NAME`, bare `infisical secrets` (list), `infisical export` **without**
   redirection. `--plain` makes it worse; `--silent` does **not** hide values.
 - Secret in argv: `infisical secrets set NAME --value …`, `curl -d '{"secretValue":"…"}'`.
+- Reading *another* process's argv/env: `ps aux`, `ps -ef`, `pgrep -a`, `cat /proc/<pid>/environ`.
+  A running process can hold a secret on its command line (e.g. an injected `infisical run --token=…`),
+  so these dump it into context. Check liveness a way that shows no args: `pgrep NAME` / `pgrep -l`
+  (pids/names only), `pidof`, `docker ps`, or `ps -o pid,stat,comm`.
 - Piping any secret through a chat/tool result to move it between hosts. Use a 600 tempfile + `scp` +
   `shred -u`.
 
