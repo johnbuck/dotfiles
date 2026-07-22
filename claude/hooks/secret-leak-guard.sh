@@ -28,6 +28,13 @@
 #   - `infisical run -- printenv` (dumps the injected env)
 #   - shell read-loop `while read … < .env`
 # Tested 105/105 deny+allow cases (evasion variants, false-positive checks, edge cases).
+#
+# 2026-07-20: added the Hermes/agent config.yaml rule (is_agent_config_path /
+# touches_agent_config). Those files (…/data/config.yaml, /opt/data/config.yaml) mix
+# plain settings with inline secrets — dashboard basic_auth.password, custom-provider
+# API keys, bot tokens — but is_secret_file misses them by name. Scoped to an agent-data
+# location or a read from inside a hermes-* container so generic config.yaml stays
+# readable. +30 deny+allow cases green.
 
 set -euo pipefail
 set -f   # no globbing — the token loops iterate $cmd unquoted on purpose
@@ -56,11 +63,24 @@ is_secret_file() {
   return 1
 }
 
+# A Hermes/agent config.yaml embeds INLINE secrets (dashboard basic_auth.password,
+# custom-provider API keys, bot tokens) yet is named plainly, so is_secret_file misses
+# it. Match it by its agent-data location: <…>/data/config.yaml or /opt/data/config.yaml.
+is_agent_config_path() {
+  case "$(printf '%s' "$1" | tr -d "\"'")" in
+    */data/config.yaml|*/data/config.yml|/opt/data/config.yaml|/opt/data/config.yml) return 0 ;;
+  esac
+  return 1
+}
+
 # --- Read tool: block reading a credential file (Read == cat for leak purposes) ---
 if [ "$tool" = "Read" ]; then
   path="$(printf '%s' "$input" | jq -r '.tool_input.file_path // ""')"
   if [ -n "$path" ] && is_secret_file "$path"; then
     deny "secret-leak-guard: reading a credential file surfaces its values into context. Don't read it — check presence/length instead (e.g. \`grep -q '^NAME=' file\`, \`… | wc -c\`), or inject the value with \`infisical run -- <cmd>\`. (Allowed for *.example/*.md.)"
+  fi
+  if [ -n "$path" ] && is_agent_config_path "$path"; then
+    deny "secret-leak-guard: a Hermes/agent config.yaml embeds inline secrets (dashboard basic_auth password, provider API keys, bot tokens). Don't read the whole file — grep one key's presence (\`grep -q '^  password:' file\`), list top-level keys (\`grep -E '^[a-z]' file\`), or copy it and strip secret lines before reading."
   fi
   exit 0
 fi
@@ -82,6 +102,21 @@ touches_secret_file() {
     case "$t" in -*|'') continue ;; esac
     is_secret_file "$t" && return 0
   done
+  return 1
+}
+# does the command print a Hermes/agent config.yaml? (inline secrets — see
+# is_agent_config_path). Matches an agent-config token, or a read from inside a
+# hermes-* container / `-u hermes` exec that names a config.ya?ml.
+touches_agent_config() {
+  local tok t
+  for tok in $cmd; do
+    t="${tok%\"}"; t="${t#\"}"; t="${t%\'}"; t="${t#\'}"
+    is_agent_config_path "$t" && return 0
+  done
+  if { has 'hermes-[A-Za-z0-9_-]+' || has '(^|[[:space:]])-u[[:space:]]+hermes([[:space:]]|$)'; } \
+     && has '(^|[^[:alnum:]_-])config\.ya?ml'; then
+    return 0
+  fi
   return 1
 }
 
@@ -139,6 +174,17 @@ if has '(^|[^[:alnum:]_-])sed([[:space:]])' && ! has '(^|[[:space:]])-i' && touc
 fi
 if has '(^|[^[:alnum:]_-])dd([[:space:]])' && ! has 'of=' && touches_secret_file; then
   deny "secret-leak-guard: \`dd\` reading a credential file with no \`of=\` prints it to stdout (context). Don't — check presence/length instead."
+fi
+
+# ── read-family printing a Hermes/agent config.yaml (inline secrets) ─────────
+# A config.yaml under an agent data dir (or read from inside a hermes-* container)
+# mixes non-secret settings with plaintext credentials. is_secret_file misses it
+# (plain name), so match it here and block any read that would print its contents.
+if touches_agent_config \
+   && { has '(^|[^[:alnum:]_-])(cat|bat|tac|nl|head|tail|less|more|most|view|xxd|hexdump|od|strings)([[:space:]])' \
+        || { has '(^|[^[:alnum:]_-])(grep|egrep|fgrep|rg|ag)([[:space:]])' && ! grep_is_safe; } \
+        || { has '(^|[^[:alnum:]_-])sed([[:space:]])' && ! has '(^|[[:space:]])-i'; }; }; then
+  deny "secret-leak-guard: a Hermes/agent config.yaml embeds inline secrets (dashboard basic_auth password, provider API keys, bot tokens). Don't print it into context. Check a key's presence with \`grep -q '^  password:' file\`, edit in place with \`sed -i\`, or copy the file and strip secret lines before reading non-secret values."
 fi
 
 # ── full env dump that includes secrets ──────────────────────────────────────

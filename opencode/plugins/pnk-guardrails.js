@@ -38,6 +38,16 @@ export const PnkGuardrails = async ({ client, $, directory }) => {
   }
   const touchesSecretFile = (cmd) =>
     cmd.split(/\s+/).some((t) => { const s = t.replace(/^["']|["']$/g, "").replace(/^if=/, ""); return s && !s.startsWith("-") && isSecretFile(s) })
+  // A Hermes/agent config.yaml (.../data/config.yaml, /opt/data/config.yaml) mixes plain settings
+  // with inline secrets (dashboard password, provider API keys, bot tokens) yet is named plainly,
+  // so isSecretFile misses it. Match it by its agent-data location, or a read from inside a
+  // hermes-* container / `-u hermes` exec that names a config.ya?ml. Mirrors the Claude hook.
+  const isAgentConfigPath = (tok) => /\/data\/config\.ya?ml$/.test(tok.replace(/^["']|["']$/g, ""))
+  const touchesAgentConfig = (cmd) => {
+    if (cmd.split(/\s+/).some((t) => isAgentConfigPath(t))) return true
+    const hermesCtx = /hermes-[A-Za-z0-9_-]+/.test(cmd) || /(^|\s)-u\s+hermes(\s|$)/.test(cmd)
+    return hermesCtx && /(^|[^A-Za-z0-9_-])config\.ya?ml/.test(cmd)
+  }
   const secretLeak = (cmd) => {
     const grepSafe = /(^|\s)-[A-Za-z]*[qlcL]\b|--quiet|--silent|--files-with-matches|--count/.test(cmd)
     if (/(^|[;&]\s*)(printenv|env)(\s*$|\s*[;&])/.test(cmd)) return "a bare printenv/env dumps every variable, including injected API keys, into context. Check one: `printenv NAME | wc -c`."
@@ -45,6 +55,11 @@ export const PnkGuardrails = async ({ client, $, directory }) => {
     if (/(^|[^A-Za-z0-9_-])(cat|bat|tac|nl|head|tail|less|more|most|view|xxd|hexdump|od|strings)(\s)/.test(cmd) && touchesSecretFile(cmd)) return "printing a credential file dumps its values into context. Use `awk -F= '{print $1}' f` (names) or `grep -q '^NAME=' f` (presence)."
     if (/(^|[^A-Za-z0-9_-])(grep|egrep|fgrep|rg|ag)(\s)/.test(cmd) && !grepSafe && touchesSecretFile(cmd)) return "grepping a credential file prints value lines into context. Use `grep -q`/`-l`/`-c`, or `awk -F= '{print $1}' f`."
     if (/(^|[^A-Za-z0-9_-])sed(\s)/.test(cmd) && !/(^|\s)-i/.test(cmd) && touchesSecretFile(cmd)) return "`sed` without `-i` prints the credential file into context. Edit in place with `-i`."
+    const agentCfg = touchesAgentConfig(cmd)
+    const agentCfgMsg = "a Hermes/agent config.yaml holds inline secrets (dashboard password, provider API keys, bot tokens). Don't print it into context. Check a key's presence with `grep -q '^  password:' f`, edit in place with `sed -i`, or copy it and strip the secret lines before reading the rest."
+    if (agentCfg && /(^|[^A-Za-z0-9_-])(cat|bat|tac|nl|head|tail|less|more|most|view|xxd|hexdump|od|strings)(\s)/.test(cmd)) return agentCfgMsg
+    if (agentCfg && /(^|[^A-Za-z0-9_-])(grep|egrep|fgrep|rg|ag)(\s)/.test(cmd) && !grepSafe) return agentCfgMsg
+    if (agentCfg && /(^|[^A-Za-z0-9_-])sed(\s)/.test(cmd) && !/(^|\s)-i/.test(cmd)) return agentCfgMsg
     if (/(^|[^A-Za-z0-9_-])pgrep\s[^|;&]*(-[A-Za-z]*a[A-Za-z]*|--list-full)/.test(cmd)) return "`pgrep -a`/`--list-full` prints each process's full command line, which can hold a secret passed in argv (e.g. an injected `--token=`). Get PIDs only (`pgrep NAME`) or names (`pgrep -l`)."
     if (/(^|[^A-Za-z0-9_-])ps\s+-?[A-Za-z]*a[A-Za-z]*x/.test(cmd) || /(^|[^A-Za-z0-9_-])ps\s+[^|;&]*-[A-Za-z]*(?:[eA][A-Za-z]*[fF]|[fF][A-Za-z]*[eA])/.test(cmd) || /(^|[^A-Za-z0-9_-])ps\s+[^|;&]*-o\s*[^|;&]*(?:args|command|cmd)(?:[^A-Za-z]|$)/.test(cmd)) return "this `ps` shows other processes' full command lines (the args column), which can hold a secret passed in argv (e.g. an injected `--token=`). Use an args-free format (`ps -o pid,stat,comm`) or check a specific PID."
     if (/\/proc\/[^/\s]+\/environ/.test(cmd) || (/\/proc\/[^/\s]+\/cmdline/.test(cmd) && /(^|[^A-Za-z0-9_-])(cat|bat|tac|nl|head|tail|less|more|most|view|xxd|hexdump|od|strings|tr|grep|egrep|fgrep|rg|ag|xargs)(\s)/.test(cmd))) return "reading `/proc/<pid>/environ` or `cmdline` dumps that process's environment or arguments, which routinely include secrets. Don't read it."
