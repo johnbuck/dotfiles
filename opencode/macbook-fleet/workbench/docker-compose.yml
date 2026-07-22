@@ -1,0 +1,36 @@
+# Shared workbench: ONE dev environment for every project under ~/projects.
+# The agent steps into the `workbench` container to run, test, and lint projects, so nothing
+# lands on the host. `postgres` is the shared database for projects that outgrow SQLite (one
+# database per project). Each project still stays self-contained and portable: it ships its own
+# Dockerfile, compose file, and .env, so `docker compose up` in the project folder runs it
+# standalone with no workbench needed.
+
+services:
+  workbench:
+    build: .
+    container_name: workbench
+    working_dir: /workspace
+    volumes:
+      # docker compose does not expand ~, so use ${HOME}
+      - ${HOME}/projects:/workspace
+    networks:
+      - workbench
+    command: sleep infinity
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    environment:
+      POSTGRES_PASSWORD: workbench
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - workbench
+    restart: unless-stopped
+
+networks:
+  workbench:
+
+volumes:
+  postgres-data:
