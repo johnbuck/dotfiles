@@ -1,0 +1,60 @@
+# pnk-preferences.yaml: planning and scaffolding steer for the MacBook opencode accounts.
+# Admin-edited. The agent reads this and steers a nontechnical operator toward these choices
+# instead of asking technical questions. A preference the operator states themselves wins over this.
+# Deployed to ~/.config/opencode/skills/pnk-preferences.yaml on both accounts, and referenced from
+# the opencode.json "instructions" array so it is in context every session.
+
+mode: steered            # steer, don't quiz. Set to "interview" for a technical user.
+
+# What to build with, by kind of project. Matches the house stack (Voxbridge, Magellan):
+# Python + FastAPI on the back, React + Vite + TypeScript + Tailwind on the front.
+stacks:
+  web_app:
+    backend:  { language: python, framework: fastapi }
+    frontend: { framework: react, bundler: vite, language: typescript, ui: tailwind }
+  api:
+    language: python
+    framework: fastapi
+  mobile:
+    framework: react-native   # reuses the React + TypeScript web knowledge
+    tooling: expo
+    language: typescript
+  script:
+    language: python
+  cli:
+    language: python
+    framework: typer
+  static_site:
+    language: html-css
+  default:
+    language: python          # for anything that fits no type above; never left blank
+
+# Runtime: all projects run inside ONE shared Docker dev environment (the "workbench") for daily
+# dev, NOT a separate container per project. BUT every project is still built SELF-CONTAINED and
+# portable: it ships its own Dockerfile + standalone docker-compose.yml + .env config + git, so it
+# can be lifted out of the workbench and run anywhere (copy the folder or push to a git host, then
+# `docker compose up`). Deps live in ~/projects/<name>/ (own .venv / node_modules) so versions
+# don't clash. The database is a setting (DATABASE_URL): shared Postgres in the workbench, the
+# project's own database when standalone. Mobile uses Expo, not Docker.
+# REQUIRED for every project no matter how small (a static page or a game too): no shortcuts, never
+# run on the host, always ship the Dockerfile + compose and run inside the workbench.
+runtime: shared-workbench
+
+# Data: start small, grow when the app needs it.
+database:
+  small: sqlite               # a file inside the project folder, nothing extra to run
+  large: shared-postgres      # one shared Postgres, a separate database per project, when SQLite isn't enough
+
+# Quality gates: full, always (operator choice).
+gates:
+  python:   { test: pytest, lint_and_format: ruff, type_check: mypy }
+  frontend: { language: typescript, lint: eslint, format: prettier, test: vitest }
+
+# Standing behavior (governs every turn, not only planning).
+simplicity: high                       # the least code that works
+data_posture: additive-reversible-only # never silently destroy real data
+confirm_before:                        # stop and ask, in plain words, before any of these
+  - spend-money
+  - publish-to-internet
+  - delete-or-overwrite-data
+  - change-scope
