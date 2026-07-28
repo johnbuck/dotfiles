@@ -60,8 +60,36 @@ Steps:
    failed and why, and offer to run the **pnk-spec** skill to bring the spec up to standard (or fix it
    directly if the gap is mechanical), then re-run this skill. A raw task description (no spec file)
    skips this check — but for anything non-trivial, offer pnk-spec first.
-3. Invoke the **Workflow** tool with `name: "pnk-baton"` and `args: { spec, repo, env, base, validate, ssh, worktree, requireRoadmap, northStar, roadmap }` (omit any optional flag not provided; `env` is required and must always be passed). The workflow itself hard-fails if `env` is missing or not `staging`/`prod`.
-4. When it returns, relay the result concisely: the feature branch name, the **target environment**, the gate outcomes (plan criteria count, alignment pre/post-build, tests, review PASS/REJECT, validation), and the exact merge command from the `note` field. Do NOT merge automatically — pnk-baton produces a reviewed branch; the user ships it.
+3. **DURABILITY PRE-CHECK — if this session is Paseo-hosted, launch baton in a DEDICATED agent, not inline.**
+   Detect with `[ -n "$PASEO_AGENT_ID" ]` (backstop: process ancestry shows `claude` → `Paseo Daemon`).
+   **Why:** a Workflow's subagents run *inside the calling session's process*. In a Paseo-hosted session
+   any interrupt to the parent conversation — the user pressing stop, rejecting/aborting a tool call, or
+   Paseo restarting the agent — propagates into the in-flight baton subagent and kills it. It dies
+   mid-stage with `[Request interrupted by user]` in its transcript while `TaskOutput` still cheerfully
+   reports `status: running`, so the run looks alive and is not. This has silently destroyed multiple
+   multi-hour builds. Holding the turn open with blocking polls does NOT fix it (it makes an interrupt
+   *more* likely); only process isolation does.
+   **So when `PASEO_AGENT_ID` is set, do this instead of calling Workflow yourself:**
+   - Confirm the target worktree/branch is either absent or provably workless
+     (`git merge-base --is-ancestor <branch> <base>`); per the HARD RULE, NEVER clear one holding work.
+   - Spawn a dedicated agent via `mcp__paseo__create_agent` — `provider: claude/claude-opus-5[1m]`
+     (all-Opus; never downgrade a baton stage), `notifyOnFinish: true`, a title naming the spec — whose
+     initial prompt tells it to invoke `/pnk-baton` with the *exact* resolved inputs (spec, repo, env,
+     base, validate, ssh, worktree) and to run until baton returns a terminal status.
+   - That prompt MUST also carry: the HARD RULE above (never delete/reset a branch holding work; never
+     hand-edit code or tests — everything goes through baton), the DRIFT-HALT protocol from step 4
+     (fix the *spec*, commit, relaunch — the spec is not code), the stale-worktree caveat (if findings
+     quote spec text already fixed, compare the worktree HEAD to base before re-running), the concrete
+     acceptance criteria the run must satisfy, and an explicit "do NOT merge and do NOT enable any
+     flag — the operator ships it".
+   - Then report the spawned agent to the user and continue other work; do not poll it, and do not also
+     launch the same spec inline (two runs collide on one worktree). Note that from then on, an
+     interrupt to *your* conversation no longer harms the build.
+   Resume caveat: `resumeFromRunId` is **same-session only**, so a dedicated agent always starts a fresh
+   run. Cached-stage replay is not available across the handoff — prefer spawning the dedicated agent
+   from the start rather than after an inline run has already died.
+4. Invoke the **Workflow** tool with `name: "pnk-baton"` and `args: { spec, repo, env, base, validate, ssh, worktree, requireRoadmap, northStar, roadmap }` (omit any optional flag not provided; `env` is required and must always be passed). The workflow itself hard-fails if `env` is missing or not `staging`/`prod`. *(In a Paseo-hosted session this call is made by the dedicated agent from step 3, not by you.)*
+5. When it returns, relay the result concisely: the feature branch name, the **target environment**, the gate outcomes (plan criteria count, alignment pre/post-build, tests, review PASS/REJECT, validation), and the exact merge command from the `note` field. Do NOT merge automatically — pnk-baton produces a reviewed branch; the user ships it.
 
 If the workflow returns `status: "BLOCKED"` or `"VALIDATION-FAILED"`, surface the outstanding findings and stop — do not paper over them. **Per the HARD RULE above, keep the branch and reuse its build** (merge-after-fixing-the-shared-blocker, fix-forward, or resume); do not delete it or rebuild from scratch. If it returns `"DRIFT-HALT"` (pre-build) or `"DRIFT-BLOCKED"` (post-build), surface the alignment findings from the `findings`/`drift` fields and stop — the work has drifted from the spec/roadmap/North Star and the operator must reconcile scope before it ships; if the drift is that the work isn't on the roadmap or the spec itself is the problem, offer to run the **pnk-roadmap** or **pnk-spec** skill to reconcile, then re-run pnk-baton (it re-integrates). If it returns `"ROADMAP-MISSING"`, report that no canonical roadmap was found and `--require-roadmap` was set; the branch is built but unmerged pending a roadmap — offer to run the **pnk-roadmap** skill to create one, then re-run pnk-baton.
 
