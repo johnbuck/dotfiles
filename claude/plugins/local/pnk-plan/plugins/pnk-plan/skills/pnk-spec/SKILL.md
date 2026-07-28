@@ -84,6 +84,56 @@ Before writing a word of spec, read the actual code (over ssh if the repo is rem
 A spec written from conversation memory instead of the code inherits every misremembering as a
 requirement.
 
+## FULLY INVESTIGATE — every assertion is verified, not assumed
+
+**This is the highest-leverage rule in the skill.** An unverified claim does not fail cheaply.
+It fails at pnk-baton's Align gate, after the pipeline has spun up planner, test-author and
+builder, and it costs a FULL BUILD CYCLE to discover. Several halts in a row cost more than the
+feature. Reading three files carefully now is the cheapest work available to you.
+
+"I read the code" is not the bar. All of the failures below passed that bar and still halted a
+build. Before you assert anything in a spec, verify it:
+
+- **Every caller of anything you change.** A shared helper serves more than one path. Grep its
+  callers and name each one. (Real halt: a fix scoped to a "fallback" path actually landed in a
+  builder shared with the primary path, silently changing production behavior elsewhere.)
+- **Every consumer keyed on what you change.** If you re-key a node, a record or an id, find
+  every downstream operation that matches on the old key. (Real halt: an event was re-keyed but
+  five co-writes still matched on the old name, so their edges would have silently vanished.)
+- **The signature of every function your spec's code calls.** Does it actually accept that
+  argument today? (Real halt: the spec called a function with a connection parameter the
+  function did not have.)
+- **The real semantics of any external API you depend on.** Do not assume a return value's
+  meaning or range. (Real halt: a vector index returns a NORMALIZED score, not raw cosine, so
+  the proposed threshold silently admitted matches far below the intended bar.)
+- **That code you propose to move or reorder still works in the new position.** (Real halt: a
+  spec reordered a function that matches on already-persisted rows to run before those rows
+  exist, which would have silently disabled the feature.)
+- **The existing conventions on the surface.** Grep how sibling code already handles the same
+  concern. (Real halt: a new query omitted the soft-retired filter every other read applies.)
+- **Every canon quote, by opening the file.** Quote verbatim from the real file. Never
+  reconstruct a rule from memory, and never invent one.
+
+Cite what you verified with file:line. If you cannot verify a claim, it does not go in the spec
+as fact: either investigate until you can, or write it in Open questions as an explicit unknown.
+
+## GET CLARITY — ask rather than guess
+
+Investigation resolves what the code can tell you. It cannot tell you what the operator wants.
+
+When a decision could reasonably go two ways and the two ways produce materially different work,
+**stop and ask with AskUserQuestion**. A guess here is not a small risk: it becomes a written
+requirement, the builder implements it faithfully, and the cost surfaces only at review or in
+production. One question costs a few seconds. A wrong assumption costs a build cycle, and a
+wrong assumption that ships costs more.
+
+Ask when: the scope boundary is unclear; a threshold, limit or default has no obvious right
+value; there is a real trade-off between safety and speed; the change touches data that cannot
+be cleanly reverted; or your investigation surfaced something the operator may not know about.
+Bring what you found, state a recommendation, and let them rule.
+
+Do not ask about things the code already answers. Investigate those.
+
 ## Completeness — scope the WHOLE feature
 
 Before writing, make sure the spec covers the **complete** feature, not a convenient slice.
