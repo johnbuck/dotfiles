@@ -16,6 +16,7 @@ dotfiles/
 ├── mcp-servers/       # MCP server links + wrappers
 ├── claude/            # Claude Code (incl. the pnk-baton pipeline — see claude/PNK-BATON.md)
 ├── opencode/          # OpenCode
+├── pi/                # pi coding-agent (global extensions)
 └── ghostty/           # Ghostty terminal
 ```
 
