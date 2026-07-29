@@ -1,0 +1,33 @@
+name: guard-parity
+
+# Keep the three secret-leak-guard implementations from drifting apart.
+# Gates Claude==pi parity (the verified-identical pair); reports OpenCode
+# deviations informationally (OC currently has narrower coverage).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "claude/hooks/secret-leak-guard.sh"
+      - "opencode/plugins/pnk-guardrails.js"
+      - "pi/extensions/secret-leak-guard.ts"
+      - "tests/guard-parity.mjs"
+      - ".github/workflows/guard-parity.yml"
+  pull_request:
+    paths:
+      - "claude/hooks/secret-leak-guard.sh"
+      - "opencode/plugins/pnk-guardrails.js"
+      - "pi/extensions/secret-leak-guard.ts"
+      - "tests/guard-parity.mjs"
+      - ".github/workflows/guard-parity.yml"
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Guard parity (Claude==pi gating; OpenCode informational)
+        run: node --experimental-strip-types tests/guard-parity.mjs
