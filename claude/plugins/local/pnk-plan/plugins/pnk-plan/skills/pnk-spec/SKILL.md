@@ -161,6 +161,37 @@ Set `epic` to the readable epic name this work belongs to (see pnk-roadmap — e
 Mark anything needing a human decision with `[@humanUser …]`. Evolve the spec in place on later
 changes (no `-v02` files); baton's documenter appends the as-built record after the build.
 
+## ADVERSARIAL REVIEW — the spec is not finished when it is written
+
+**Required. Every spec, every time.** A written spec is a draft. It becomes a spec after an
+independent reader has tried to break it and failed.
+
+Self-review does not work here, and the reason is structural: the assumption that produced a
+wrong claim is the same assumption you re-read it with, so it passes. Only a reader who has not
+seen your reasoning catches it. This is the same principle that makes pnk-baton's reviewers
+independent of its builder — applied one stage earlier, where a fix costs minutes instead of a
+build cycle.
+
+The economics are not close. Three read-only reviewers cost a fraction of ONE Align halt, and an
+Align halt only happens after planner, test-author and builder have already spun up. A spec that
+halts the gate four times in a row costs more than the feature it describes.
+
+Run it like this:
+
+1. Read `references/adversarial-review.md` and spawn the reviewers it defines — **verification**
+   (is every factual claim true), **blast radius** (what does this break that the spec omits),
+   and **buildability** (could someone with no context build it). Launch them in one message so
+   they run concurrently.
+2. Give each reviewer the spec path and the repo, and **nothing else**. No transcript, no
+   summary of intent, no defense of the approach. Blindness is what makes the pass work.
+3. Fix every confirmed finding in the spec. Never rebut a finding from memory — open the file it
+   cites. If a finding exposes a decision only the operator can make, ask with AskUserQuestion
+   rather than picking.
+4. Report the outcome in one short line: what the reviewers found and what you changed. If they
+   found nothing, say that.
+
+Do not hand a spec to a human or to pnk-baton before this pass has run.
+
 ## After writing — confirm, then hand off
 
 1. Use AskUserQuestion to confirm the major scope and approach choices; revise if needed.
