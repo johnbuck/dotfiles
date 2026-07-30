@@ -45,7 +45,9 @@ for f in "$REPO"/secrets/*.example; do
   cp "$f" "$DEST/secrets/$(basename "$f")"
 done
 
-# plugins/: portable opencode plugins (e.g. the pnk-guardrails secret + destructive-command guard)
+# plugins/: portable opencode plugins. (The secret-leak guard now comes from
+# secrets-guard/install.sh --harness opencode, delegated below; this glob is for any
+# future standalone plugins.)
 if [ -d "$REPO/plugins" ]; then
   mkdir -p "$DEST/plugins"
   for f in "$REPO"/plugins/*.js; do
@@ -56,6 +58,10 @@ if [ -d "$REPO/plugins" ]; then
 fi
 
 say "config + agents + commands + plugins + secret templates installed"
+
+# Deploy the shared secret-leak-guard for OpenCode (adapter + core).
+SG="$(dirname "$REPO")/secrets-guard/install.sh"
+[ -x "$SG" ] && "$SG" --harness opencode || say "secrets-guard/install.sh not found; skipping guard deploy"
 
 cat <<EOF
 

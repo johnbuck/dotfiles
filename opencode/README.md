@@ -13,9 +13,9 @@ key files live only on each machine and are never committed.
 | `agents/build.md` | Custom `build` agent. |
 | `commands/*.md` | Custom commands: `memory-status`, `recall`, `remember`, `voice`. |
 | `secrets/*.example` | Placeholder templates listing which key files to create. **No real values.** |
-| `plugins/pnk-guardrails.js` | Guardrails plugin: hard-blocks catastrophic commands and secret-into-context leaks (including `ps aux`/`pgrep -a` argv dumps, `.env` reads, and Hermes/agent `config.yaml` reads), plus best-effort nudges. Toggle with `PNK_GUARDRAILS=on\|nonudge\|off`. Kept rule-for-rule aligned with the Claude Code hook `claude/hooks/secret-leak-guard.sh`. |
+| [`../secrets-guard/`](../secrets-guard/README.md) | The shared secret-leak guard (core + adapters). `install.sh` delegates to `../secrets-guard/install.sh`, which deploys the OpenCode adapter + core into `~/.config/opencode/plugins/`. The adapter keeps the catastrophic-command blocklist and nudges (toggle `PNK_GUARDRAILS=on\|nonudge\|off`); the secret-leak rules come from the shared core. |
 | `install.sh` | Deploys into `~/.config/opencode/`, backing up anything it overwrites. |
-| `macbook-fleet/` | Separate, self-contained OpenCode config for the guided MacBook operator accounts (its own `AGENTS.md`, `pnk-*` skills, commands, workbench). Shares only this directory's `plugins/pnk-guardrails.js`. See its README. |
+| `macbook-fleet/` | Separate, self-contained OpenCode config for the guided MacBook operator accounts (its own `AGENTS.md`, `pnk-*` skills, commands, workbench). See its README. |
 
 ## Placeholders to fill in
 

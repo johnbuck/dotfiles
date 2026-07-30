@@ -119,6 +119,10 @@ for m in installed_plugins.json known_marketplaces.json; do
 done
 say "plugin manifests written"
 
+# Deploy the shared secret-leak-guard for Claude (adapter + core + settings.json wiring).
+SG="$(dirname "$REPO")/secrets-guard/install.sh"
+[ -x "$SG" ] && "$SG" --harness claude || say "secrets-guard/install.sh not found; skipping guard deploy"
+
 # Wire the secret-scan hook for commits made in THIS repo (hooks live at repo root).
 TOPLEVEL="$(git -C "$REPO" rev-parse --show-toplevel 2>/dev/null || true)"
 if [ -n "$TOPLEVEL" ] && [ -f "$TOPLEVEL/hooks/pre-commit" ]; then

@@ -35,6 +35,10 @@ if [ -d "$REPO/extensions" ]; then
   say "extensions/ installed"
 fi
 
+# Deploy the shared secret-leak-guard for pi (adapter + core).
+SG="$(dirname "$REPO")/secrets-guard/install.sh"
+[ -x "$SG" ] && "$SG" --harness pi || say "secrets-guard/install.sh not found; skipping guard deploy"
+
 # Wire the repo's pre-commit secret-scan hook (idempotent; same as claude/install.sh).
 TOPLEVEL="$(git -C "$REPO" rev-parse --show-toplevel 2>/dev/null || true)"
 if [ -n "$TOPLEVEL" ] && [ -f "$TOPLEVEL/hooks/pre-commit" ]; then

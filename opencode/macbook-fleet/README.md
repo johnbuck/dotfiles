@@ -20,9 +20,9 @@ in at deploy time, never committed.
 | `command/*.md` | Six operator commands: `new-project`, `spec`, `roadmap`, `scaffold`, `ship-it`, `commit`. |
 | `workbench/` | The one shared Docker dev environment (Python + Node toolchain + a shared Postgres) that every project runs inside. |
 
-The **guardrails plugin is not duplicated here** — it is the single shared copy at
-`../plugins/pnk-guardrails.js`, deployed alongside this config. Keeping one copy is deliberate: it
-stays rule-for-rule aligned with the Claude Code hook `claude/hooks/secret-leak-guard.sh`.
+The **guardrails plugin is not duplicated here** — the secret-leak guard lives in the
+shared `../../secrets-guard/` codebase, deployed by `../../secrets-guard/install.sh`.
+Keeping one source is deliberate: the same rule core drives Claude, OpenCode, and pi.
 
 ## Placeholders to fill in
 

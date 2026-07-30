@@ -7,7 +7,7 @@ carrying between machines. **Contains no secrets, credentials, or session histor
 
 | Path | What it is |
 |------|------------|
-| `extensions/secret-leak-guard.ts` | A `tool_call` guard for the `bash` and `read` tools that hard-blocks the highest-confidence "leak a secret value into context" commands. A self-contained TypeScript port of [`../claude/hooks/secret-leak-guard.sh`](../claude/hooks/secret-leak-guard.sh) — same deny rules, same reasons, kept at parity with Claude by `tests/guard-parity.mjs` (CI-gated). Global: pi auto-discovers `~/.pi/agent/extensions/*.ts` with no project-trust gate, so it applies everywhere. |
+| [`../secrets-guard/`](../secrets-guard/README.md) | The shared secret-leak guard (core + adapters). `install.sh` delegates to `../secrets-guard/install.sh`, which deploys the pi adapter + core into `~/.pi/agent/extensions/` (auto-discovered globally, no trust gate). |
 | `install.sh` | Deploys `extensions/` into `~/.pi/agent/`, backing up anything it overwrites. |
 
 ## What the guard blocks
@@ -44,9 +44,10 @@ cd pi && ./install.sh
 
 Extensions auto-load on the next `pi` start (or `/reload` in a running session).
 
-## Keeping the port in sync with the Claude hook
+## Parity
 
-`secret-leak-guard.ts` and `../claude/hooks/secret-leak-guard.sh` are **independent
-implementations kept at parity automatically**. `tests/guard-parity.mjs` runs all three
-(Claude bash hook, OpenCode JS, pi TS) against one case battery and gates Claude==pi
-agreement in CI (`.github/workflows/guard-parity.yml`); OpenCode deviations are reported.
+The guard is one shared codebase ([`../secrets-guard/`](../secrets-guard/README.md)): a
+single rule core imported by the Claude, OpenCode, and pi adapters. `../secrets-guard/tests/parity.mjs`
+runs the case battery through all three adapters plus the canonical bash reference and gates
+agreement in CI (`.github/workflows/secrets-guard-parity.yml`). Edit a rule once in the core;
+all three harnesses update.

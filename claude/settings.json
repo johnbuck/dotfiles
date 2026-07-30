@@ -157,7 +157,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "__HOME__/.claude/hooks/secret-leak-guard.sh"
+            "command": "node __HOME__/.claude/hooks/secrets-guard.mjs"
           }
         ]
       }

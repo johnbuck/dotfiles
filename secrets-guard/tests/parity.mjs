@@ -15,7 +15,7 @@ import { PnkGuardrails } from "../adapters/opencode.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
-const BASH_HOOK = resolve(ROOT, "../claude/hooks/secret-leak-guard.sh");
+const BASH_HOOK = resolve(ROOT, "reference/secret-leak-guard.sh");
 const CLAUDE_ADAPTER = resolve(ROOT, "adapters/claude.mjs");
 
 // --- canonical bash hook (the reference the core must match) ---

@@ -17,6 +17,7 @@ dotfiles/
 ├── claude/            # Claude Code (incl. the pnk-baton pipeline — see claude/PNK-BATON.md)
 ├── opencode/          # OpenCode
 ├── pi/                # pi coding-agent (global extensions)
+├── secrets-guard/     # shared secret-leak guard (claude/opencode/pi adapters + core)
 └── ghostty/           # Ghostty terminal
 ```
 
