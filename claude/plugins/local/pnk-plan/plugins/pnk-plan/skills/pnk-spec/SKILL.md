@@ -134,6 +134,33 @@ Bring what you found, state a recommendation, and let them rule.
 
 Do not ask about things the code already answers. Investigate those.
 
+## TESTABLE CONDITIONS OR NOTHING — the single biggest cause of gate halts
+
+A governing rule quoted and then followed by prose reasoning is **not** a check. It reads as
+complete and is not, which is why this defect survives self-review.
+
+```
+BAD   - date-quality — "Trending ranks on occurrence" (NORTH_STAR.md § Pulse)
+        → therefore missing dates hurt Trending, so this change helps.
+
+GOOD  - date-quality — "Trending ranks on occurrence" (NORTH_STAR.md § Pulse)
+        complies by: the prompt requires an occurrence date on every event.
+        testable: both prompt paths contain a date instruction naming ISO
+        format — entities.py:725 and entities.py:1112 (the two differ today:
+        :725 says "ISO format", :1112 says "(YYYY-MM-DD)"; pin BOTH).
+```
+
+The failure mode is specific and expensive: **pnk-baton's planner will not leave the condition
+blank. It invents one, and it invents it wrong** — commonly by generalizing one code path's
+wording into a rule the other path violates, which then reads as drift and halts the gate. Four
+consecutive Align halts on one spec traced to exactly this.
+
+So: every quoted rule in the North Star check carries a `testable:` line naming a condition a
+test or command can check. Where two code paths word the same thing differently, **pin the
+requirement per path with both file:line references** — one rule stated over two divergent paths
+is a halt waiting to happen. If a rule genuinely cannot be made testable, say so explicitly and
+say why; do not leave it implied.
+
 ## Completeness — scope the WHOLE feature
 
 Before writing, make sure the spec covers the **complete** feature, not a convenient slice.

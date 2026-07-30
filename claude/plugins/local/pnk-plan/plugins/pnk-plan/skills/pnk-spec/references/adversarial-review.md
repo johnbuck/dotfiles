@@ -81,17 +81,22 @@ Spec: <absolute path to spec file>.
 Judge ONLY whether this spec is complete and unambiguous enough to build from. You have no
 context beyond the spec and the repo — that is exactly the position the builder is in.
 
-Check:
+CHECK THIS FIRST, and treat every failure as BLOCKING — it is the most common reason a spec
+halts a build:
+- Does EVERY quoted rule in the North Star / canon check carry a concrete `testable:` condition
+  a test or command could actually check? A quote followed by prose reasoning ("→ therefore
+  this complies") is a FAILURE, not a pass. The builder's planner does not leave a missing
+  condition blank; it invents one, and it invents it wrong.
+- Where the same behavior is worded or implemented differently at two call sites, does the spec
+  pin the condition PER PATH with each file:line? Grep both paths and compare their actual
+  wording. One condition asserted over two divergent paths is a failure — report the exact
+  divergence you found.
+
+Then check:
 - Does the change map (KEEP/CHANGE/REMOVE) cover EVERY change the approach section describes?
   List anything described in prose but missing from the map.
 - Is every acceptance criterion testable, and does it name how it is verified? Flag any
   criterion that is an aspiration rather than a check.
-- Does the North Star / canon check give TESTABLE CONDITIONS, or only quotes plus prose
-  reasoning? A quote followed by "therefore this is fine" forces the builder to invent the
-  condition, and it will invent it wrong. Every governing quote needs a concrete, checkable
-  condition attached.
-- Where the spec references a behavior that differs between two code paths, does it pin the
-  requirement PER PATH, or state one rule that is only true of one of them?
 - Does the spec present multiple selectable options anywhere? That makes the builder choose.
   Flag it.
 - Is anything left to "later" without being a stated, deliberate out-of-scope decision?

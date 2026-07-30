@@ -66,8 +66,15 @@ Hard rules for this section:
   operator to make deliberately — not something this spec declares.
 - Non-canonical hard lines (performance bounds, "don't touch X") belong in Constraints below, not
   here.
+- **Every quoted rule carries a `testable:` condition. No exceptions.** A quote followed only by
+  prose reasoning ("→ therefore this complies") is an incomplete entry. The planner does not skip
+  a missing condition — it invents one, and it invents it wrong, which reads as drift and halts
+  the gate. If a rule truly cannot be made testable, write `testable: none — <why>`.
+- **Pin the condition per code path when paths differ.** If two call sites word or implement the
+  same thing differently, state the requirement for each with its own file:line. One condition
+  asserted over two divergent paths is a halt waiting to happen.
 - **<rule-handle>** — "<verbatim quote>" (`NORTH_STAR.md § <section>`); complies by: <how>;
-  testable: <condition a test or command can check>
+  testable: <condition a test or command can check, with file:line per path>
 
 ## Behavior
 - **Actors / systems:** who or what triggers this, and which external systems/services it touches.
