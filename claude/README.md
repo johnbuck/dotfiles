@@ -16,7 +16,7 @@ secrets, credentials, conversation history, or personal data.**
 | [`../secrets-guard/`](../secrets-guard/README.md) | The shared secret-leak guard (core + Claude/OpenCode/pi adapters). `install.sh` delegates to `../secrets-guard/install.sh`, which deploys the adapter + core into `~/.claude/hooks/` and wires it globally in `settings.json` (Bash\|Read). Companion backstop to the `pnk-secret-hygiene` skill. |
 | `plugins/local/project-planning/` | Local `do-the-thing` plugin (`do-specs` + `do-scaffold` skills). Eval/benchmark artifacts were stripped — only the working plugin ships. |
 | `plugins/*.json` | Manifest of which marketplaces/plugins to install (reference + used by installer). |
-| `.mcp.json.example` | Full MCP server set (sanitized). `__MCP_HOST__` placeholder for the LAN host; tokens via `${ENV_VAR}`. Copy to `~/.claude/.mcp.json` and fill in. |
+| `.mcp.json.example` | Full MCP server set (sanitized), incl. `serena` (`--context claude-code --project-from-cwd`). `__HOME__`/`__MCP_HOST__` placeholders; tokens via `${ENV_VAR}`. Copy to `~/.claude/.mcp.json` and fill in. |
 | `install.sh` | Deploys the above into `~/.claude/`, backing up anything it overwrites. |
 | `hooks/pre-commit` | Secret-leak guard (gitleaks if present, else grep fallback) that blocks committing tokens. |
 
@@ -50,6 +50,8 @@ Then, by hand (these involve secrets/accounts and are never automated):
 > is never committed. This `.mcp.json.example` is the portable, sanitized equivalent.
 
 ## Permission posture
+
+`settings.json` also wires Serena's recommended hooks (PreToolUse `remind`/`auto-approve`, SessionStart `activate`, SessionEnd `cleanup`) alongside the secret-leak guard. `serena-hooks` must be on PATH (ships with the `serena` install).
 
 `settings.json` ships a **conservative** default: `defaultMode: default` (Claude asks before
 acting) with broad read-only/dev commands pre-allowed and destructive ones denied or gated to

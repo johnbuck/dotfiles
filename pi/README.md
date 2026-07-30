@@ -8,7 +8,8 @@ carrying between machines. **Contains no secrets, credentials, or session histor
 | Path | What it is |
 |------|------------|
 | [`../secrets-guard/`](../secrets-guard/README.md) | The shared secret-leak guard (core + adapters). `install.sh` delegates to `../secrets-guard/install.sh`, which deploys the pi adapter + core into `~/.pi/agent/extensions/` (auto-discovered globally, no trust gate). |
-| `install.sh` | Deploys `extensions/` into `~/.pi/agent/`, backing up anything it overwrites. |
+| `mcp.json.example` | MCP server template (magellan, cognee, uptime-kuma, playwright, serena). `__HOME__`/`__MCP_HOST__` tokens + `${COGNEE_MCP_TOKEN}` env ref — no secrets or topology. |
+| `install.sh` | Deploys `extensions/` + `mcp.json` into `~/.pi/agent/`, backing up anything it overwrites. |
 
 ## What the guard blocks
 
@@ -39,10 +40,13 @@ Never committed (and never touched by `install.sh`) — these stay per-machine:
 git clone https://github.com/johnbuck/dotfiles ~/dotfiles
 cd ~/dotfiles
 git config core.hooksPath hooks    # turn on the repo's secret-scan hook
-cd pi && ./install.sh
+# MCP servers need the LAN addr of the host running them (wiley):
+MCP_HOST=<wiley-lan-addr> ./pi/install.sh
+# (without MCP_HOST, mcp.json is skipped — copy mcp.json.example by hand instead)
 ```
 
-Extensions auto-load on the next `pi` start (or `/reload` in a running session).
+Extensions + `mcp.json` auto-load on the next `pi` start (or `/reload` in a running session).
+`serena` uses `--project-from-cwd`, so it attaches to whatever repo you launch `pi` in.
 
 ## Parity
 

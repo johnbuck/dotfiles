@@ -46,6 +46,12 @@
       "command": "npx",
       "args": ["-y", "@playwright/mcp@latest", "--browser", "chromium"],
       "env": {}
+    },
+    "serena": {
+      "type": "stdio",
+      "command": "__HOME__/.local/bin/serena",
+      "args": ["start-mcp-server", "--context", "claude-code", "--project-from-cwd"],
+      "env": {}
     }
   }
 }

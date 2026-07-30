@@ -35,6 +35,21 @@ if [ -d "$REPO/extensions" ]; then
   say "extensions/ installed"
 fi
 
+# mcp.json (rendered template -> ~/.pi/agent/mcp.json).
+#   __HOME__     -> $HOME  (serena binary path)
+#   __MCP_HOST__ -> $MCP_HOST (LAN addr of the host running the HTTP MCP servers)
+# ${COGNEE_MCP_TOKEN} is left literal — pi resolves it at runtime from keys.env.
+# Requires MCP_HOST; skipped with instructions if unset (per-environment, never hardcoded).
+if [ -f "$REPO/mcp.json.example" ]; then
+  if [ -n "${MCP_HOST:-}" ]; then
+    backup_if_exists "$DEST/mcp.json"
+    sed -e "s|__HOME__|$HOME|g" -e "s|__MCP_HOST__|$MCP_HOST|g" "$REPO/mcp.json.example" > "$DEST/mcp.json"
+    say "mcp.json written (MCP_HOST=$MCP_HOST)"
+  else
+    say "mcp.json SKIPPED — set MCP_HOST=<wiley LAN addr> and re-run, or copy mcp.json.example by hand"
+  fi
+fi
+
 # Deploy the shared secret-leak-guard for pi (adapter + core).
 SG="$(dirname "$REPO")/secrets-guard/install.sh"
 [ -x "$SG" ] && "$SG" --harness pi || say "secrets-guard/install.sh not found; skipping guard deploy"

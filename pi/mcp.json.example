@@ -1,0 +1,30 @@
+{
+  "_comment": "Template. install.sh renders __HOME__ -> $HOME and __MCP_HOST__ -> $MCP_HOST (LAN addr of the host running these servers). ${COGNEE_MCP_TOKEN} is resolved by pi at runtime from ~/.pi/agent/keys.env — leave it literal. Copy to ~/.pi/agent/mcp.json (or run: MCP_HOST=<addr> ./install.sh).",
+  "mcpServers": {
+    "magellan": {
+      "url": "http://__MCP_HOST__:8093/mcp",
+      "lifecycle": "lazy"
+    },
+    "cognee": {
+      "url": "http://__MCP_HOST__:8418/mcp",
+      "headers": { "Authorization": "Bearer ${COGNEE_MCP_TOKEN}" },
+      "excludeTools": ["*forget*", "*delete*"],
+      "lifecycle": "lazy"
+    },
+    "uptime-kuma": {
+      "url": "http://__MCP_HOST__:8403/mcp",
+      "lifecycle": "lazy"
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest", "--browser", "chromium"],
+      "lifecycle": "lazy"
+    },
+    "serena": {
+      "_comment": "--project-from-cwd makes serena attach to whatever repo pi is launched in. --context ide drops the file/shell tools pi already has.",
+      "command": "__HOME__/.local/bin/serena",
+      "args": ["start-mcp-server", "--context", "ide", "--project-from-cwd"],
+      "lifecycle": "lazy"
+    }
+  }
+}
