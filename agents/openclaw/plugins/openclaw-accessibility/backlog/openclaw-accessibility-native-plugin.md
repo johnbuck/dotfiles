@@ -147,7 +147,7 @@ Error codes: `invalid_input`, `browser_unavailable`, `navigation_failed`, `audit
 
 ## Constraints (must-not)
 
-- Do **not** commit any host-specific value: no `.lan` hostnames, LAN IPs, Tailscale names, Infisical IDs, or secrets in any file. The repo's pre-commit secret scan must pass.
+- Do **not** commit any host-specific value: no LAN hostnames, LAN IPs, Tailscale names, Infisical IDs, or secrets in any file. The repo's pre-commit secret scan must pass.
 - Do **not** deploy to, restart, or modify the live Juliet/thringle container as part of this work.
 - The `a11y_audit` tool must **never throw out of the hook** — all failure paths return a structured `{ ok: false }` result.
 - Do **not** bundle or launch a second browser; connect to the existing CDP Chromium via `connectOverCDP`.

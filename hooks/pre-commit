@@ -43,7 +43,7 @@ fi
 
 # 4) Topology guard — this is a PUBLIC repo; block homelab network topology
 #    (LAN/Tailscale IPs, .lan domains, -pinkleberry hostnames). Secrets aren't
-#    the only thing worth keeping private — this is how 10.0.10.x slipped in.
+#    the only thing worth keeping private — this is how a LAN IP once slipped in.
 topo='10\.0\.[0-9]{1,3}\.[0-9]|100\.(6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\.[0-9]+\.[0-9]+|-pinkleberry|\.lan\b'
 while IFS= read -r f; do
   [ -f "$f" ] || continue
