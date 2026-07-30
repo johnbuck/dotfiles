@@ -11,7 +11,7 @@ browser run.
   `devDependencies` unless you pass `--include=dev`.
 - The container has DNS for `gateway` (the agent-hub Caddy proxy) and for
   other containers on the `agent-hub-sandbox` Docker network. It does
-  **not** resolve `*.local` (no mDNS) or `*.lan` (Docker's internal
+  **not** resolve `*.local` (no mDNS) or LAN-domain hosts (Docker's internal
   resolver bypasses Pi-hole).
 - A git worktree allocated by pipeline-guard does not contain
   `node_modules` — the parent checkout's modules are not shared.
@@ -36,7 +36,7 @@ If `npm ci` errors with "lockfile out of sync," fall back to
 
 For any other service, ask the architect for the gateway prefix or check
 `docs/PLAN.md` / the per-service `README.md` in this repo — never
-hard-code `*.local` or `*.lan` host names. The Caddyfile itself is not
+hard-code `*.local` or LAN-zone host names. The Caddyfile itself is not
 mounted into this container; the gateway routes are documented in
 `docs/PLAN.md`.
 

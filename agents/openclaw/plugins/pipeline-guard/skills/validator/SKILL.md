@@ -87,7 +87,7 @@ you must get right or the run will fail in confusing ways:
 2. **Use a container-reachable BASE_URL.** The bundled
    `playwright.config.ts` defaults `baseURL` to
    `http://compute-host:5173`, which is **not resolvable from
-   inside the container** (no mDNS, no `.lan` resolution for Docker's
+   inside the container** (no mDNS, no LAN-domain resolution for Docker's
    internal DNS). The deployed the app is reachable through the
    agent-hub Caddy gateway:
 
@@ -97,7 +97,7 @@ you must get right or the run will fail in confusing ways:
 
    For other deployed services on the compute host, look up the route in
    `~/agent-hub/proxy/Caddyfile` (e.g. `/app-api/`, `/app/`) — never
-   hard-code `*.local` or `*.lan` hostnames in tests.
+   hard-code `*.local` or LAN-zone hostnames in tests.
 
 3. **Deploy your build before validating.** The validator runs against the
    *deployed* artifact, not a local dev server. After `npm run build`,
