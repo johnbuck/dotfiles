@@ -136,13 +136,17 @@ def cmd_landmarks(a):
         above = sum(1 for v in vs if v.z > neck[1])
         print(f"  verts above the neck plane: {above}")
         # Anything above the neck but far from its axis is not the head:
-        # backpack, quiver arrows, a raised weapon. Report the split so a head
-        # graft can cut by cylinder rather than by plane and keep them.
+        # backpack, quiver arrows, a raised weapon. Report the split as a
+        # sanity check on what is up there. Do NOT cut by this radius: it has
+        # to be wide enough for the nose and chin, which reach further forward
+        # than these features sit sideways. `assemble.py graft` separates them
+        # by connectivity instead.
         far = [v for v in vs if v.z > neck[1]
                and ((v.x - cx) ** 2 + (v.y - cy) ** 2) ** 0.5 > a.head_radius]
         if far:
             print(f"  {len(far)} verts above the neck lie beyond r="
-                  f"{a.head_radius} of its axis: NOT part of the head")
+                  f"{a.head_radius} of its axis: NOT part of the head "
+                  f"(informational; the graft cuts by connectivity)")
             print(f"    x {min(v.x for v in far):.4f}..{max(v.x for v in far):.4f}"
                   f"  y {min(v.y for v in far):.4f}..{max(v.y for v in far):.4f}"
                   f"  z {min(v.z for v in far):.4f}..{max(v.z for v in far):.4f}")

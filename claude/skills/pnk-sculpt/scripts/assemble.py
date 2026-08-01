@@ -170,51 +170,91 @@ def cmd_graft(a):
     # chest. Cut everything below the join, leaving a small overlap so the fuse
     # has material to weld through.
     if a.head_trim:
-        cut_z = b_neck[1] - a.head_overlap * b_H
+        trim_z = b_neck[1] - a.head_overlap * b_H
         before = len(head.data.polygons)
         select_only(head)
         bpy.ops.object.mode_set(mode="EDIT")
         bpy.ops.mesh.select_all(action="SELECT")
-        bpy.ops.mesh.bisect(plane_co=(0, 0, cut_z), plane_no=(0, 0, 1),
+        bpy.ops.mesh.bisect(plane_co=(0, 0, trim_z), plane_no=(0, 0, 1),
                             clear_inner=True, clear_outer=False)
         bpy.ops.object.mode_set(mode="OBJECT")
         fill_holes(head)
-        print(f"   trimmed the bust below z={cut_z:.4f}: "
+        print(f"   trimmed the bust below z={trim_z:.4f}: "
               f"{before} -> {len(head.data.polygons)} faces", flush=True)
-        check("head trimmed", head, mm=mm_per_unit(body, a.height_mm))
+        hh = check("head trimmed", head, mm=mm_per_unit(body, a.height_mm))
+        if not is_watertight(hh):
+            raise SystemExit("the trimmed head is not closed; a voxel remesh of "
+                             "an open shell returns lace across the WHOLE part, "
+                             "not just near the cut. Fix the cap first.")
 
-    remove_head(body, b_neck[1], b_cx, b_cy, a.head_radius)
+    # Cut BELOW the detected neck: that detector reports the chin on most
+    # figures, and cutting at it leaves the chin and jaw behind, under the plane.
+    cut_z = a.cut_z if a.cut_z else b_neck[1] - a.cut_drop
+    remove_head(body, cut_z)
     fill_holes(body)
-    check("body decapitated and capped", body, a.height_mm)
+    h = check("body decapitated and capped", body, a.height_mm)
+    if not is_watertight(h):
+        raise SystemExit("the decapitated body is not closed; the fuse would "
+                         "shred it into thin shells. Fix the cap first.")
 
     save(a.output)
     print(f"\nBody and Head are both in {a.output}, aligned but not yet fused. "
           f"Add a base if you want one, then run `fuse`.")
 
 
-def remove_head(obj, z, cx, cy, radius):
-    """Delete the head without touching anything else above the neck.
+def remove_head(obj, z):
+    """Delete the head as a connected island. No radius, nothing to tune.
 
-    A flat plane cut at the neck also decapitates quiver arrows, a raised
-    weapon, a backpack: anything that rises past the shoulder. Measured on a
-    standing humanoid the head and ears lie within a small radius of the neck
-    axis while those other features sit well beyond it, so cut by a cylinder
-    around that axis instead. `mesh.py landmarks` prints the split so you can
-    pick the radius from evidence.
+    The obvious approach, a cylinder around the neck axis, cannot work. It has to
+    be wide enough to swallow the nose and chin, which reach further FORWARD than
+    a quiver's arrows sit SIDEWAYS. On one figure the chin reached 0.085 from the
+    axis and the arrows started at 0.099: a gap that looks usable until the cut
+    plane moves and it closes. Tapering the radius toward the neck, to avoid
+    leaving a shelf, made it strictly worse by shrinking the radius to 0.0595
+    exactly where the chin is, so a jaw blob survived on top of the neck.
+
+    Connectivity has no such tension. Above a plane cut low in the neck, the head
+    is one island and each arrow is another. Delete the island reaching highest,
+    which is the crown of the skull. Measured on that figure: the head was one
+    island of 167,962 faces and the arrows were four separate islands.
+
+    `z` must be BELOW the jaw. Verify it on a side render with the height drawn
+    on before trusting a neck detector, which tends to report the chin.
     """
     bm = bmesh.new()
     bm.from_mesh(obj.data)
-    doomed = []
-    r2 = radius * radius
-    for f in bm.faces:
-        c = f.calc_center_median()
-        if c.z > z and ((c.x - cx) ** 2 + (c.y - cy) ** 2) < r2:
-            doomed.append(f)
-    bmesh.ops.delete(bm, geom=doomed, context="FACES")
+    bm.faces.ensure_lookup_table()
+    above = {f.index for f in bm.faces if f.calc_center_median().z > z}
+    if not above:
+        bm.free()
+        raise SystemExit(f"nothing above z={z}; the cut plane is wrong")
+
+    seen, comps = set(), []
+    for idx in above:
+        if idx in seen:
+            continue
+        stack, members = [idx], []
+        seen.add(idx)
+        while stack:
+            cur = stack.pop()
+            members.append(cur)
+            for e in bm.faces[cur].edges:
+                for nf in e.link_faces:
+                    if nf.index in above and nf.index not in seen:
+                        seen.add(nf.index)
+                        stack.append(nf.index)
+        comps.append(members)
+
+    zmax = [max(v.co.z for i in m for v in bm.faces[i].verts) for m in comps]
+    head_i = max(range(len(comps)), key=lambda i: zmax[i])
+    print(f"   islands above z={z:.4f}: {len(comps)}; deleting the one reaching "
+          f"{zmax[head_i]:.4f} ({len(comps[head_i])} faces), keeping "
+          f"{len(comps) - 1}", flush=True)
+    bmesh.ops.delete(bm, geom=[bm.faces[i] for i in comps[head_i]],
+                     context="FACES")
     bm.to_mesh(obj.data)
     obj.data.update()
     bm.free()
-    print(f"   removed {len(doomed)} head faces (r={radius})", flush=True)
     return obj
 
 
@@ -506,8 +546,13 @@ def main():
                     help="trim on top of the measured neck-match scale")
     s2.add_argument("--head-voxel", type=float, default=0.0,
                     help="resample the head to the fuse density; 0 skips")
-    s2.add_argument("--head-radius", type=float, default=0.11,
-                    help="cylinder radius around the neck axis to remove")
+    s2.add_argument("--cut-drop", type=float, default=0.020,
+                    help="cut this far below the detected neck; that detector "
+                         "usually reports the CHIN, and cutting at it leaves "
+                         "the jaw behind")
+    s2.add_argument("--cut-z", type=float, default=0.0,
+                    help="absolute cut height, overriding --cut-drop. Verify it "
+                         "on a side render before trusting it.")
     s2.add_argument("--neck-lo", type=float, default=0.78)
     s2.add_argument("--neck-hi", type=float, default=0.92)
     s2.add_argument("--head-neck-lo", type=float, default=0.25)

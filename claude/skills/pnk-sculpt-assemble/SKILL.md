@@ -28,10 +28,22 @@ fuse then happen as a single voxel remesh. Eyes last, as a small local boolean
 plus a re-close at the same voxel the figure was fused at.
 
 **Why not booleans throughout.** Exact booleans are excellent on a tidy
-two-object case and unreliable on a dense multi-component organic mesh. One
-attempt on an 850k-face six-component mesh collapsed it to 7k faces. The remesh
-fuse is unconditionally robust; the price is that it resamples the whole
-surface, which is why its voxel must be coarser than the finest part going in.
+two-object case and unreliable on a dense organic mesh. Three measured failures
+on one figure, none of which raised an error:
+
+| Operation | Before | After |
+|---|---|---|
+| UNION of a head into a 6-component body | 856k faces | 7,765 |
+| UNION of spheres into a mesh just cut by DIFFERENCE | 1,432,069 | 1,575 |
+| DIFFERENCE of a simple slab from a bust | 537,322 | 6,653 |
+
+They are safe against simple primitives on a clean single-shell mesh: the sphere
+that plugs a palm and the cylinder that cuts a socket both work. For anything
+else, delete faces and cap, or join and remesh. Note the second row: a mesh that
+has just been cut is a poor boolean operand even when the cut itself succeeded.
+
+The remesh fuse is unconditionally robust; the price is that it resamples the
+whole surface, which is why its voxel must be coarser than the finest part.
 
 ## Setup
 
@@ -87,28 +99,93 @@ of the frame, so after the reconstructor downsamples its input the face has
 almost no pixels and comes out as a mask. A separate bust gives the face the
 whole frame, roughly a tenfold detail increase.
 
+Reconstructing the head is easy. **Attaching it is the hardest thing in this
+pipeline** and took nine attempts on the build these notes come from. Read the
+whole section before running anything; each failure below hides the next.
+
+### The neck detector finds the chin
+
+The narrowest horizontal band in the upper body is the standard way to find a
+neck. On a figure with a braid beside the neck or a collar around it, that band
+lands on the **chin**, because the chin genuinely is narrower than the padded
+neck. Three defects follow, and they took five attempts to untangle:
+
+1. **The cut plane sits through the jaw**, so the chin and lower face survive
+   *below* it. No radius fixes that; the leftover is not outside the cylinder,
+   it is under the plane.
+2. **The head seats too high.** A body's detector finds its chin while a bust's
+   finds its real neck, and the graft aligns those two. Different anatomy, so
+   the head floats high: a stretched neck, and the bust's collar dragged down
+   over the body's.
+3. **The head scales small**, because the scale is body crown-to-**chin** over
+   bust crown-to-**neck**.
+
+**Verify the neck height before cutting.** Render from the side with candidate
+heights drawn on, and confirm the number:
+
+```bash
+$B $S/mesh.py -- ortho work/body_prop.blend neck --at 0.0,0.44 --scale 0.30 --outdir renders
+```
+
+Then draw labelled lines at known z using the mapping the renderer prints. This
+one diagnostic settled in a single image what four rounds of judging renders
+could not.
+
+### Remove the head by connectivity, not by radius
+
+A cylinder around the neck axis must be wide enough to swallow the nose and
+chin, which reach further **forward** than a quiver's arrows sit **sideways**.
+On one figure the chin reached 0.085 from the axis and the arrows started at
+0.099: a gap that looks workable until the plane moves and it closes. Tapering
+the radius toward the neck, to avoid leaving a shelf, made it strictly worse by
+dropping the radius to 0.0595 exactly where the chin is.
+
+Connectivity has no such tension. Cut low in the neck, group the faces above the
+plane into connected islands, and delete the one whose vertices reach highest:
+the crown of the skull. On that figure the head was one island of 167,962 faces
+and the arrows were four separate islands, untouched. No parameter to tune, and
+nothing to re-measure after a reshape.
+
+The limit: connectivity only separates what is genuinely disconnected. A bust's
+collar is **joined** to its neck, so that cut stays geometric.
+
+### Trim the bust to head plus a neck column
+
+A bust is head, neck, shoulders, collar and often a plinth. Dropped whole onto a
+body it gives the figure two sets of shoulders inside each other. A horizontal
+plane below the neck is not enough either: it slices the bust's chest, and that
+wide cut edge pokes out through the body's surface.
+
+Keep the bust whole above its own neck; below that keep only a narrow column
+around the neck axis. Measured on one bust: neck radius 0.035 to 0.05, collar
+flaring to 0.13, so a column of 0.055 separated them.
+
+### Running it
+
 ```bash
 $B $S/assemble.py -- graft work/body_socket.blend work/head_clean.blend \
    work/aligned.blend --head-scale 0.94 --head-voxel 0.0011 \
-   --head-radius 0.11 --height-mm 200
+   --cut-z 0.398 --head-trim --head-overlap 0.045 --height-mm 200
 ```
 
-Alignment is measured, not typed. The neck is the narrowest horizontal band in
-the upper part of each mesh, and matching neck-to-crown distances gives the
-scale. `--head-scale` trims that by eye, because a reconstructed bust usually
-has a slightly generous neck; 0.92 to 0.96 is the useful range.
+`--cut-z` is the verified neck height. Leave it off to fall back to
+`--cut-drop` below the detected neck, but verify either way.
 
-**`--head-radius` is what keeps the quiver.** A flat plane cut at the neck also
-decapitates anything rising past the shoulder: arrows, a raised weapon, a
-backpack. Measured on a standing humanoid the head and ears lie within a small
-radius of the neck axis while those features sit well beyond it, so the cut is a
-cylinder around that axis. `mesh.py landmarks` prints exactly how many vertices
-fall each side of a candidate radius, so pick it from that rather than the
-default.
+**`--head-voxel` is in final figure units.** Scale is applied before the remesh,
+so the value is used directly. Dividing it by the scale is a bug that produces a
+head remeshed far too fine, which reads as noise after the fuse.
 
-**`--head-voxel` is in final figure units.** The scale is applied before the
-remesh, so the value is used directly. Dividing it by the scale is a bug that
-produces a head remeshed far too fine, which then reads as noise after the fuse.
+### Cap every cut, and gate on watertight
+
+Deleting faces leaves an open shell. A voxel remesh builds a signed distance
+field and needs a closed surface to tell inside from outside; an open one comes
+back as thin lacy walls **across the whole component**, not just near the cut.
+That shows up as shredded hair a long way from the seam and reads as a
+reconstruction problem rather than a cutting one.
+
+Cap after every cut and refuse to continue if the part is not watertight. The
+gate is worth more than the cap: it converts a confusing cosmetic failure three
+steps later into a clear error where the mistake happened.
 
 ## Base and fuse
 
