@@ -1,6 +1,6 @@
 ---
 description: Run a spec through the pnk-baton multi-agent build pipeline (plan → test → build → review → optional validate)
-argument-hint: <spec-path> --env <staging|prod> [--validate] [--base <branch>] [--ssh <user@host>] [--worktree <path>] [--require-roadmap] [--north-star <path>] [--roadmap <path>]
+argument-hint: <spec-path> --env <staging|prod> [--validate] [--base <branch>] [--ssh <user@host>] [--worktree <path>] [--require-roadmap] [--north-star <path>] [--roadmap <path>] [--test-repair-budget <n>] [--validate-code-cycles <n>]
 ---
 
 Run the **pnk-baton** build pipeline on the spec/task at: `$ARGUMENTS`
@@ -39,6 +39,8 @@ Steps:
    - `requireRoadmap` = true only if `--require-roadmap` is present. When set, a missing canonical roadmap is a hard failure; default is warn-and-continue.
    - `northStar` = the value after `--north-star` if present — an explicit path to the project's North Star/vision doc. Else omit (the drift-checker auto-discovers it).
    - `roadmap` = the value after `--roadmap` if present — an explicit path to the canonical roadmap. Else omit (auto-discovered).
+   - `testRepairBudget` = the value after `--test-repair-budget` if present, else omit (default 1). How many times the test-author may ADJUDICATE a claimed test/harness defect. The builder cannot edit tests, so a defective test is otherwise unfixable inside the run; this lane lets one agent judge the claim (and REFUSE it) instead of the run grinding every remaining attempt against a target no correct code can satisfy. Raise it only for a spec whose harness is genuinely expected to need more than one correction.
+   - `validateCodeCycles` = the value after `--validate-code-cycles` if present, else omit (default 1). How many times a real-infrastructure validation FAIL whose fault is the branch's own CODE may re-enter the build cycle (fix → re-test → re-review → re-validate) rather than discarding an already fully-paid-for pipeline. Set 0 to make any validation failure terminal.
 2. **PRE-FLIGHT: spec quality check — do NOT launch a spec that would fail the rubric.** When `spec`
    is a file, read it (over ssh when `--ssh` is set) and judge it against the same rubric the Align
    gate scores, BEFORE spending a workflow run (catching it here is free). Judge quality, not the
@@ -88,9 +90,17 @@ Steps:
    Resume caveat: `resumeFromRunId` is **same-session only**, so a dedicated agent always starts a fresh
    run. Cached-stage replay is not available across the handoff — prefer spawning the dedicated agent
    from the start rather than after an inline run has already died.
-4. Invoke the **Workflow** tool with `name: "pnk-baton"` and `args: { spec, repo, env, base, validate, ssh, worktree, requireRoadmap, northStar, roadmap }` (omit any optional flag not provided; `env` is required and must always be passed). The workflow itself hard-fails if `env` is missing or not `staging`/`prod`. *(In a Paseo-hosted session this call is made by the dedicated agent from step 3, not by you.)*
+4. Invoke the **Workflow** tool with `name: "pnk-baton"` and `args: { spec, repo, env, base, validate, ssh, worktree, requireRoadmap, northStar, roadmap, testRepairBudget, validateCodeCycles }` (omit any optional flag not provided; `env` is required and must always be passed). The workflow itself hard-fails if `env` is missing or not `staging`/`prod`. *(In a Paseo-hosted session this call is made by the dedicated agent from step 3, not by you.)*
 5. When it returns, relay the result concisely: the feature branch name, the **target environment**, the gate outcomes (plan criteria count, alignment pre/post-build, tests, review PASS/REJECT, validation), and the exact merge command from the `note` field. Do NOT merge automatically — pnk-baton produces a reviewed branch; the user ships it.
 
 If the workflow returns `status: "BLOCKED"` or `"VALIDATION-FAILED"`, surface the outstanding findings and stop — do not paper over them. **Per the HARD RULE above, keep the branch and reuse its build** (merge-after-fixing-the-shared-blocker, fix-forward, or resume); do not delete it or rebuild from scratch. If it returns `"DRIFT-HALT"` (pre-build) or `"DRIFT-BLOCKED"` (post-build), surface the alignment findings from the `findings`/`drift` fields and stop — the work has drifted from the spec/roadmap/North Star and the operator must reconcile scope before it ships; if the drift is that the work isn't on the roadmap or the spec itself is the problem, offer to run the **pnk-roadmap** or **pnk-spec** skill to reconcile, then re-run pnk-baton (it re-integrates). If it returns `"ROADMAP-MISSING"`, report that no canonical roadmap was found and `--require-roadmap` was set; the branch is built but unmerged pending a roadmap — offer to run the **pnk-roadmap** skill to create one, then re-run pnk-baton.
+
+Three statuses mean **the run stopped early on purpose to stop spending**, and each carries its own diagnosis — relay it rather than re-launching:
+
+- `"NO-PROGRESS"` — two consecutive attempts left exactly the same tests failing, so further attempts provably cannot help. Read `failing` and `attemptsUsed`. Triage by hand: either the code needs a decision the spec does not settle (amend the spec, re-run), or a test is defective and the builder did not recognise it (fix the harness, re-run). Do NOT simply re-run with a higher `maxRetries` — the signature says more attempts change nothing.
+- `"TEST-DEFECT-HALT"` — a further test/harness defect was claimed after `testRepairBudget` was spent. Read `defect`. Either adjudicate it yourself (the claim may be wrong) or fix the harness, then resume. Raising `--test-repair-budget` is only correct when the harness genuinely needs multiple corrections.
+- `"VALIDATION-FAILED"` with a `faultDomain` field — the triage already happened. `code` means the bounded fix cycles are spent and the branch's own code is wrong (fix-forward on the branch). `harness` means the CODE may well be correct and the validation harness is what needs fixing — check that before touching production code. `environment` means the infrastructure itself is the problem and nothing in the pipeline can fix it.
+
+The `testRepairs` field on any terminal result reports how many defect claims were adjudicated. A run that spent repairs and still failed is a signal about the SPEC's expectations (usually a value pinned to the wrong environment), not about the builder.
 
 This is the consumer half of a producer→consumer pair: the **pnk-plan** plugin (skills `pnk-spec`, `pnk-roadmap`, `pnk-scaffold`) produces the spec + roadmap artifacts that pnk-baton builds and the drift-checker enforces.

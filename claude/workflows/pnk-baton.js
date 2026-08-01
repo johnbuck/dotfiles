@@ -9,6 +9,7 @@ export const meta = {
     { title: 'Test', detail: 'test-author writes failing tests (red) + reconciles tests obsoleted by the change' },
     { title: 'Baseline', detail: 'capture pre-existing failures on base so the gate judges NEW failures only' },
     { title: 'Build', detail: 'builder makes tests pass (green); loops with review' },
+    { title: 'Repair', detail: 'bounded test-author adjudication of a claimed test/harness defect (may REFUSE)' },
     { title: 'Integrate', detail: 'merge latest base into the branch' },
     { title: 'Review', detail: 'independent reviewers, one per dimension, in parallel' },
     { title: 'Validate', detail: 'optional real-infrastructure end-to-end check (before Accept — its measurements are gate evidence)' },
@@ -33,6 +34,17 @@ const dimensions = A.dimensions || ['correctness', 'security', 'performance/obse
 const validate = A.validate ?? false
 const wantMerge = A.merge ?? true
 const maxRetries = A.maxRetries ?? 2
+// Bounded repair lanes. A test or live harness can itself be defective (asserts what the
+// spec never required, or pins an expectation that only holds in the OTHER environment).
+// The builder is forbidden to touch tests, so without these the run grinds every remaining
+// attempt against an unsatisfiable target and dies with the whole pipeline spent.
+// `testRepairBudget`  — how many claimed test/harness defects the TEST-AUTHOR may adjudicate
+//                       (it may REFUSE; a refusal is not a repair and still costs the budget).
+// `validateCodeCycles` — how many times a real-infra validation FAIL whose fault is the
+//                       branch's own CODE may go back to the builder (re-test, re-review,
+//                       re-validate) instead of discarding a fully-paid-for pipeline.
+const testRepairBudget = A.testRepairBudget ?? 1
+const validateCodeCycles = A.validateCodeCycles ?? 1
 
 // Target environment — REQUIRED, no default (every run must declare staging|prod).
 // Drives: which infra the validator/builder exercise, whether validation is mandatory
@@ -137,6 +149,21 @@ const BUILD = {
     testsPass: { type: 'boolean' },
     summary: { type: 'string' },
     flagged: { type: 'array', items: { type: 'string' } },
+    // Identifiers of tests still failing — the input to no-progress detection.
+    failingTests: { type: 'array', items: { type: 'string' } },
+    // The builder's ONLY channel for "this test cannot be satisfied by correct code".
+    // Populated => triage routes to the test-author for adjudication instead of grinding.
+    defect: {
+      type: ['object', 'null'], additionalProperties: false,
+      properties: {
+        file: { type: 'string' },
+        testId: { type: 'string' },
+        problem: { type: 'string' },
+        evidence: { type: 'string' },
+        proposedFix: { type: 'string' },
+      },
+      required: ['file', 'problem', 'evidence'],
+    },
   },
   required: ['testsPass', 'summary'],
 }
@@ -167,8 +194,25 @@ const VALID = {
     status: { enum: ['PASS', 'FAIL', 'SKIPPED'] },
     evidence: { type: 'string' },
     reproduction: { type: 'string' },
+    // Required on FAIL — decides the next move: 'code' goes back to the builder,
+    // 'harness' to the test-author, 'environment' halts for the operator.
+    faultDomain: { enum: ['code', 'harness', 'environment', 'none'] },
   },
   required: ['status', 'evidence'],
+}
+// Verdict of the test-author acting as INDEPENDENT ADJUDICATOR of a claimed defect.
+// REFUSED is the anti-gaming guarantee: the writer of the code never gets to edit its
+// own contract just by asserting the contract is wrong.
+const TESTFIX = {
+  type: 'object', additionalProperties: false,
+  properties: {
+    verdict: { enum: ['REPAIRED', 'REFUSED'] },
+    rationale: { type: 'string' },
+    filesChanged: { type: 'array', items: { type: 'string' } },
+    contractPreserved: { type: 'boolean' },
+    detail: { type: 'string' },
+  },
+  required: ['verdict', 'rationale'],
 }
 const DRIFT = {
   type: 'object', additionalProperties: false,
@@ -263,6 +307,9 @@ log(`Target environment: ${env.toUpperCase()}${isProd ? ' — production: real-i
 // decisions get resolved toward THE GOAL, not toward whatever is locally convenient.
 const goalNote = `\n\n=== THE GOAL — why this work exists; judge every decision against it ===\n${plan.goal}`
 
+// Told to the validator: on a FAIL, WHOSE fault it is decides what the pipeline does next.
+const faultNote = `\n\n=== FAULT DOMAIN — REQUIRED WHEN YOU REPORT FAIL ===\nA FAIL must also set \`faultDomain\`, because it routes the run:\n- **code** — the production code on this branch is wrong; the observed behaviour genuinely violates a success criterion or THE GOAL. Routed back to the BUILDER for one bounded fix cycle.\n- **harness** — the code behaved CORRECTLY and the VALIDATION HARNESS is what is wrong: its expected value is unsatisfiable in ${env} (measured on another corpus/environment), it asserts something the spec never required, or it is simply broken (bad fixture, wrong invocation, missing env var). Routed to the test-author for a bounded ADJUDICATED repair, then re-validated. Quote the specific assertion and give observed-vs-expected as evidence.\n- **environment** — neither: the infrastructure is down, unreachable or misconfigured, so no verdict on the feature is possible. Halts for the operator. Do not use this to excuse a real failure — if the infra is merely unavailable, report SKIPPED instead.\nBe precise and honest. 'harness' is not a way to make a real failure disappear: an independent adjudicator reviews the claim and can refuse it, which sends the fault straight back to the code.`
+
 // Prod targets ALWAYS validate (and must PASS — see validationOk below); staging keeps
 // the validator optional (run if requested or the planner deems it needed).
 const wantValidate = isProd || validate || plan.validationNeeded
@@ -283,7 +330,7 @@ const isDrift = (d) => d.status === 'DRIFT' || blockingFindings(d).length > 0
 // ---- Align: pre-build drift gate (cheap; catch drift before any code) -------
 phase('Align')
 const align = await agent(
-  `You are the pnk-baton DRIFT-CHECKER in **pre-build** mode. No code exists yet — judge the SPEC and the PLANNER's design for alignment before any build tokens are spent.\n${fields}\n\n${driftNote}${envNote}\n\nPlanner summary: ${plan.summary}\nPlanner approach:\n${plan.approach}\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}\n\nFIRST, gate the SPEC's QUALITY against the spec rubric — score every criterion in \`specRubric\` with PASS / FAIL / N/A plus concrete evidence (quote the spec or its gap). This is where drift enters the pipeline: judge quality, not the mere presence of headings — a section that exists but is vague, prose-only, or unverifiable FAILS its criterion. Any FAIL is a High finding (axis: spec) and DRIFT. Scale to the work (a genuinely trivial change satisfies criteria with less — say so in evidence; N/A only when the criterion truly does not apply, with the reason):\n1. **grounded-in-code** — the spec inventories the touched surface's CURRENT behavior from the actual code (each filter/limit/guard/gate/fallback/branch with file:line). Spot-check against the code: an element on the path missing from the inventory FAILS (the build would guess its fate). New-surface work: N/A only if the spec says so explicitly.\n2. **change-map** — every as-is element dispositioned KEEP/CHANGE/REMOVE; REMOVE lines are the only authorized deletions.\n3. **north-star-values** — the SPECIFIC North Star / canonical-reference rules governing this surface are quoted verbatim with file paths + how the change complies + a testable condition per rule. Read the North Star for this surface YOURSELF: an omitted governing principle FAILS; a spec-invented \"rule\" with no canonical source FAILS (it has no authority and can enshrine a bug — a missing-but-needed rule is a North Star update for the operator); every quote must match its cited file (fabricated canon is the worst drift vector). An explicit \"none — no North Star rule governs this surface\" passes only if actually true.\n4. **code-examples** — actual code where applicable: the exact query / function body / config / schema-with-example-record for every non-trivial change, at plan-mode specificity (a build-ready appendix for long code). A technical section that only DESCRIBES behavior in prose FAILS — prose is where builders invent. Where the spec comes from a prototype, the prototype's real code must be embedded, not summarized.\n5. **build-guidance** — specific, ordered instructions a builder can execute without inventing a single decision: exact surfaces/files touched, the order of operations, rollout/flag/migration steps. If YOU can name a decision the builder would have to make alone, the spec FAILS this criterion — name it in evidence.\n6. **testable-acceptance** — acceptance criteria with named verification (test/command/expected output), one assertion each, at least one error path.\n7. **clarity** — plain, unambiguous language; terms defined; no statement a reasonable builder could read two ways (quote any you find).\n\nTHEN audit alignment across project-north-star, baton-principles, how-we-do-things, spec, and roadmap. Locate the North Star and roadmap (report exactly what you found). Judge neutrally. DRIFT on genuine Critical/High/MEDIUM misalignment (scope creep, direction change, rule violation, off-roadmap work, any silent data loss / destructive action / skipped-staging risk) — but every blocking finding MUST cite concrete evidence (file/section + quoted intent) or be downgraded to Optional. ROADMAP-MISSING only when the absence of a roadmap is the sole blocking issue; otherwise ALIGNED. Do not over-block a correct, minimal, on-roadmap plan, and do not rubber-stamp drift.`,
+  `You are the pnk-baton DRIFT-CHECKER in **pre-build** mode. No code exists yet — judge the SPEC and the PLANNER's design for alignment before any build tokens are spent.\n${fields}\n\n${driftNote}${envNote}\n\nPlanner summary: ${plan.summary}\nPlanner approach:\n${plan.approach}\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}\n\nFIRST, gate the SPEC's QUALITY against the spec rubric — score every criterion in \`specRubric\` with PASS / FAIL / N/A plus concrete evidence (quote the spec or its gap). This is where drift enters the pipeline: judge quality, not the mere presence of headings — a section that exists but is vague, prose-only, or unverifiable FAILS its criterion. Any FAIL is a High finding (axis: spec) and DRIFT. Scale to the work (a genuinely trivial change satisfies criteria with less — say so in evidence; N/A only when the criterion truly does not apply, with the reason):\n1. **grounded-in-code** — the spec inventories the touched surface's CURRENT behavior from the actual code (each filter/limit/guard/gate/fallback/branch with file:line). Spot-check against the code: an element on the path missing from the inventory FAILS (the build would guess its fate). New-surface work: N/A only if the spec says so explicitly.\n2. **change-map** — every as-is element dispositioned KEEP/CHANGE/REMOVE; REMOVE lines are the only authorized deletions.\n3. **north-star-values** — the SPECIFIC North Star / canonical-reference rules governing this surface are quoted verbatim with file paths + how the change complies + a testable condition per rule. Read the North Star for this surface YOURSELF: an omitted governing principle FAILS; a spec-invented \"rule\" with no canonical source FAILS (it has no authority and can enshrine a bug — a missing-but-needed rule is a North Star update for the operator); every quote must match its cited file (fabricated canon is the worst drift vector). An explicit \"none — no North Star rule governs this surface\" passes only if actually true.\n4. **code-examples** — actual code where applicable: the exact query / function body / config / schema-with-example-record for every non-trivial change, at plan-mode specificity (a build-ready appendix for long code). A technical section that only DESCRIBES behavior in prose FAILS — prose is where builders invent. Where the spec comes from a prototype, the prototype's real code must be embedded, not summarized.\n5. **build-guidance** — specific, ordered instructions a builder can execute without inventing a single decision: exact surfaces/files touched, the order of operations, rollout/flag/migration steps. If YOU can name a decision the builder would have to make alone, the spec FAILS this criterion — name it in evidence.\n6. **testable-acceptance** — acceptance criteria with named verification (test/command/expected output), one assertion each, at least one error path. Any expected VALUE derived from live data (a count, a pinned id, a ranking position, an exact set) must state WHICH environment it was measured in and hold in this run's target (${env}) — an expectation measured on one corpus and asserted against another is a manufactured failure that no correct code can satisfy, and it FAILS this criterion. Prefer invariant assertions (a behaviour, an ordering, a relationship) over corpus-specific magnitudes; where a magnitude is genuinely required, the spec must say how to re-derive it in the target environment.\n7. **clarity** — plain, unambiguous language; terms defined; no statement a reasonable builder could read two ways (quote any you find).\n\nTHEN audit alignment across project-north-star, baton-principles, how-we-do-things, spec, and roadmap. Locate the North Star and roadmap (report exactly what you found). Judge neutrally. DRIFT on genuine Critical/High/MEDIUM misalignment (scope creep, direction change, rule violation, off-roadmap work, any silent data loss / destructive action / skipped-staging risk) — but every blocking finding MUST cite concrete evidence (file/section + quoted intent) or be downgraded to Optional. ROADMAP-MISSING only when the absence of a roadmap is the sole blocking issue; otherwise ALIGNED. Do not over-block a correct, minimal, on-roadmap plan, and do not rubber-stamp drift.`,
   { agentType: 'pnk-baton-drift-checker', phase: 'Align', label: 'align:pre-build', schema: DRIFT, model: 'opus' },
 )
 const rubricLine = (align.specRubric || []).map((r) => `${r.criterion}=${r.verdict}`).join(' ')
@@ -302,7 +349,7 @@ if (isDrift(align)) {
 // ---- Test (red) ------------------------------------------------------------
 phase('Test')
 const tests = await agent(
-  `You are the pnk-baton TEST-AUTHOR.\n${fields}${goalNote}\n\nYou are already on branch ${branch} in a dedicated worktree — do NOT create or switch branches. Write failing tests that encode these success criteria, then confirm they all fail for the right reason.\n\nNORTH STAR TESTS (as important as the feature tests): read the spec's "North Star check" section — the North Star / canonical-reference rules this change must not violate (also carried in the plan as "north-star:" criteria). Write a regression test for EACH testable rule so that if the builder violates the North Star while making the feature tests pass, a test goes red. Unlike the feature tests these may already PASS on the current code (the rule currently holds) — that is correct and expected; report them separately from the red set. Test ONLY rules the spec quotes from the North Star / canonical docs — never a rule the spec invented locally. If the spec touches an existing surface but has no North Star check section, flag that in notes.\n\nRECONCILE OBSOLETE TESTS (part of the red phase — you are the ONLY stage allowed to touch test files): if this change REMOVES or REPLACES existing behavior, pre-existing tests that assert the now-removed contract will fail once the builder lands the change, and the builder is FORBIDDEN to fix them — so YOU must delete or repoint them in this same commit. Read the spec/plan for anything it deletes or replaces (a response field, a payload shape, a helper, a whole surface), grep the test suite for tests asserting that removed contract, and delete or rewrite them to the new contract now. If the spec names specific test files to delete/repoint, do exactly that. Only reconcile tests made obsolete by THIS change — never weaken or delete unrelated tests to force green.\n\nSuccess criteria:\n${plan.successCriteria.map((c, i) => `${i + 1}. ${c}`).join('\n')}\n\nPlan approach:\n${plan.approach}\n\nCommit the tests on ${branch} with a message: test: ${specName} (red).`,
+  `You are the pnk-baton TEST-AUTHOR.\n${fields}${goalNote}\n\nYou are already on branch ${branch} in a dedicated worktree — do NOT create or switch branches. Write failing tests that encode these success criteria, then confirm they all fail for the right reason.\n\nNORTH STAR TESTS (as important as the feature tests): read the spec's "North Star check" section — the North Star / canonical-reference rules this change must not violate (also carried in the plan as "north-star:" criteria). Write a regression test for EACH testable rule so that if the builder violates the North Star while making the feature tests pass, a test goes red. Unlike the feature tests these may already PASS on the current code (the rule currently holds) — that is correct and expected; report them separately from the red set. Test ONLY rules the spec quotes from the North Star / canonical docs — never a rule the spec invented locally. If the spec touches an existing surface but has no North Star check section, flag that in notes.\n\nRECONCILE OBSOLETE TESTS (part of the red phase — you are the ONLY stage allowed to touch test files): if this change REMOVES or REPLACES existing behavior, pre-existing tests that assert the now-removed contract will fail once the builder lands the change, and the builder is FORBIDDEN to fix them — so YOU must delete or repoint them in this same commit. Read the spec/plan for anything it deletes or replaces (a response field, a payload shape, a helper, a whole surface), grep the test suite for tests asserting that removed contract, and delete or rewrite them to the new contract now. If the spec names specific test files to delete/repoint, do exactly that. Only reconcile tests made obsolete by THIS change — never weaken or delete unrelated tests to force green.\n\nSuccess criteria:\n${plan.successCriteria.map((c, i) => `${i + 1}. ${c}`).join('\n')}\n\nPlan approach:\n${plan.approach}\n\nGROUND EVERY EXPECTED VALUE IN THE TARGET ENVIRONMENT (${env}). If an expected value comes from live data — a count, a pinned id, an exact set, a ranking position — MEASURE it against ${env} before you assert it; never carry a number measured in another environment into this run. An expectation that only holds on the other corpus is a defect that no correct production code can satisfy, and it will stall the pipeline. Prefer assertions that are invariant across corpora (a behaviour, an ordering, a relationship, a before/after direction) over a magnitude that only one dataset produces; where the spec genuinely demands a magnitude, re-derive it here and say in \`notes\` how it was derived.\n\nCommit the tests on ${branch} with a message: test: ${specName} (red).`,
   { agentType: 'pnk-baton-test-author', phase: 'Test', schema: TESTS, model: 'opus' },
 )
 log(`Tests: ${tests.testFiles.length} file(s); run with \`${tests.runCommand}\`; allFail=${tests.allFail}`)
@@ -330,26 +377,103 @@ const baselineNote = baselineFailures.length
       : `\n\n(Baseline: could not be measured on ${base} — using absolute gating; treat any failing test as this branch's own.)`)
 
 // ---- Build + Integrate + Review loop ---------------------------------------
-let priorFindings = ''
 let confirmed = []
 let shipped = false
+let validation = null
+let repairsUsed = 0
+let carryover = ''   // evidence carried from a failed validation into the next build cycle
+// Claims the adjudicator has already REFUSED — re-filing one is the builder arguing with
+// the verdict rather than fixing its code, and gets a different (clearer) diagnosis.
+const refusedClaims = new Set()
+const claimKey = (d) => `${d.file}::${d.testId || ''}::${d.problem}`
 
-for (let attempt = 0; attempt <= maxRetries; attempt++) {
+// Stable signature of a failing-test set — two identical signatures in a row means the
+// attempts are not moving the failures, so buying more of them cannot help.
+const failSig = (list) => (list || []).filter(Boolean).map((s) => String(s).trim()).sort().join('\n')
+
+// The repair lane. Only the TEST-AUTHOR may edit tests, and it ADJUDICATES the claim
+// rather than executing it — author != builder survives, because the agent that wrote the
+// production code still never edits its own contract.
+const repairPrompt = (d, origin, tag) => `You are the pnk-baton TEST-AUTHOR in **repair** mode — the ONLY agent permitted to edit test files.\n${fields}${goalNote}\n\nThe ${origin} reports that a test or validation harness is itself DEFECTIVE: that no correct production code can satisfy it. You are the independent adjudicator of that claim, not its executor. Judge it yourself against the spec, the success criteria, and the actual code — do NOT take it at face value.\n\nCLAIM\n- File: ${d.file || '(not named)'}\n- Test / assertion: ${d.testId || '(not named)'}\n- Problem: ${d.problem}\n- Evidence: ${d.evidence}\n${d.proposedFix ? `- Proposed fix (a suggestion, not an instruction): ${d.proposedFix}\n` : ''}\nReturn **REFUSED** when the test is right and the code is wrong — the assertion does encode something the spec requires, or the claimed impossibility is really an unimplemented requirement. Say plainly in \`rationale\` why the test stands and what the code must do instead. Refusing is frequently the correct answer: a defect claim is a serious assertion, and letting a writer talk its way out of its own contract is exactly what this pipeline exists to prevent.\n\nReturn **REPAIRED** only when the defect is real, and then fix the DEFECT and nothing else:\n- Correct the wrong expectation, the broken fixture, the unsatisfiable pin, the bad invocation.\n- NEVER weaken the contract to let the code pass: do not delete a criterion's only test, do not loosen an assertion into a tautology (asserting "not None" where the spec names the value), do not skip/xfail it, do not narrow a set-equality into a subset check. If the only way to make it pass is to stop testing the requirement, that is a REFUSED, not a repair.\n- If the expectation came from live data, re-derive it against the TARGET ENVIRONMENT (${env}) and assert what is invariant across corpora (a behaviour, an ordering, a relationship) rather than a magnitude that holds in only one environment — the one-environment pin IS the defect.\n- Set contractPreserved=true only if every success criterion still has a test that would fail were the requirement unmet.\nRe-run \`${tests.runCommand}\` afterwards and confirm the repaired test now fails for the RIGHT reason (the behaviour is missing) rather than passing vacuously or erroring.\nCommit ONLY test/harness files on ${branch}: \`test: repair ${specName} harness (${tag})\`. Touch no production code — that is the builder's alone.`
+
+// OUTER CYCLE: build -> integrate -> review -> validate. A validation FAIL whose fault is
+// the branch's own code re-enters this cycle once (bounded by validateCodeCycles) so the
+// reviewers see the fixed diff — rather than discarding a fully-paid-for pipeline.
+for (let cycle = 0; cycle <= validateCodeCycles; cycle++) {
+ const cyc = `c${cycle + 1}`
+ let priorFindings = carryover
+ let lastFailSig = null
+ let needCodeCycle = false
+ shipped = false
+ carryover = ''
+
+ for (let attempt = 0; attempt <= maxRetries; attempt++) {
+  const tag = `${cyc}-a${attempt + 1}`
   phase('Build')
   const build = await agent(
-    `You are the pnk-baton BUILDER (the single writer).\n${fields}${goalNote}\n\nWhen a local implementation decision arises that the spec/plan does not settle, choose the option that serves THE GOAL above; if the goal does not settle it either, make the safest minimal choice and list it in \`flagged\` — never silently pick what is locally convenient.\n\nMake these tests pass with the minimum correct code. Run \`${tests.runCommand}\`. DO NOT modify any test file. Stay on ${branch} in this worktree. Commit on the feature branch: feat: ${specName}.${baselineNote}\n\nReport testsPass=true when your target tests pass AND the branch introduces NO NEW failures vs the baseline above — a test that also fails on ${base} (in the baseline list) is pre-existing debt, is NOT yours to fix, and does NOT keep testsPass from being true. Never edit a test to silence it. If your only remaining failures are pre-existing baseline ones, report testsPass=true and list them in \`flagged\` as pre-existing.\n\n**Final report:** your StructuredOutput MUST set \`testsPass\` (boolean) FIRST, then a \`summary\` of AT MOST 3 sentences — do not write a long essay, the committed diff is the record.\n\nPlan approach:\n${plan.approach}\n` +
+    `You are the pnk-baton BUILDER (the single writer).\n${fields}${goalNote}\n\nWhen a local implementation decision arises that the spec/plan does not settle, choose the option that serves THE GOAL above; if the goal does not settle it either, make the safest minimal choice and list it in \`flagged\` — never silently pick what is locally convenient.\n\nMake these tests pass with the minimum correct code. Run \`${tests.runCommand}\`. DO NOT modify any test file. Stay on ${branch} in this worktree. Commit on the feature branch: feat: ${specName}.${baselineNote}\n\nReport testsPass=true when your target tests pass AND the branch introduces NO NEW failures vs the baseline above — a test that also fails on ${base} (in the baseline list) is pre-existing debt, is NOT yours to fix, and does NOT keep testsPass from being true. Never edit a test to silence it. If your only remaining failures are pre-existing baseline ones, report testsPass=true and list them in \`flagged\` as pre-existing.\n\n=== IF A TEST OR HARNESS IS ITSELF DEFECTIVE: STOP AND FILE IT, DO NOT GRIND ===\nYou may not edit test files — that stands. But you may not keep burning attempts against a test that NO correct production code can satisfy either. If, after genuinely trying, you conclude a test or live harness is itself wrong — it asserts something the spec never required, its expected value is unsatisfiable in the target environment (${env}) because it was pinned to another corpus, its fixture/mock bypasses or contradicts the code path under test, or it contradicts another test — then STOP on that attempt and FILE it: set testsPass=false, list the still-failing ids in \`failingTests\`, and populate \`defect\` with the file, the test id, the precise problem, and CONCRETE EVIDENCE (quote the assertion, give actual vs expected, and cite the spec line showing the assertion is not required). The TEST-AUTHOR — the only agent allowed to touch tests — will adjudicate independently and may REFUSE, in which case the fault is yours and you fix the code. Do not file a defect to dodge hard work: an unevidenced claim is ignored and a refused claim costs you an attempt. If the failure is your code's fault, leave \`defect\` empty and report testsPass=false with \`failingTests\`.\n\n**Final report:** your StructuredOutput MUST set \`testsPass\` (boolean) FIRST, then a \`summary\` of AT MOST 3 sentences — do not write a long essay, the committed diff is the record. Always populate \`failingTests\` when testsPass is false.\n\nPlan approach:\n${plan.approach}\n` +
       (priorFindings ? `\nThe reviewers REJECTED the previous attempt. Address every Critical, High, and Medium finding below, then re-run the tests:\n${priorFindings}` : ''),
-    { agentType: 'pnk-baton-builder', phase: 'Build', label: `build:attempt-${attempt + 1}`, schema: BUILD, model: 'opus' },
+    { agentType: 'pnk-baton-builder', phase: 'Build', label: `build:${tag}`, schema: BUILD, model: 'opus' },
   )
   if (!build) {
     return { status: 'INFRA-FAILED', branch, base, worktree: workdir, reason: `Builder agent died (API error / session limit) on attempt ${attempt + 1} — no build result. The branch may hold partial work; resume this run rather than relaunching fresh.`, plan }
   }
-  log(`Build attempt ${attempt + 1}: testsPass=${build.testsPass}${build.flagged?.length ? ` (flagged: ${build.flagged.join('; ')})` : ''}`)
+  log(`Build ${tag}: testsPass=${build.testsPass}${build.flagged?.length ? ` (flagged: ${build.flagged.join('; ')})` : ''}`)
+
+  // --- FAULT TRIAGE, before paying for Integrate ------------------------------
+  // Integrate re-runs the entire suite; running it on a build that never reached green
+  // buys nothing. Route by fault instead: a defective test goes to its author, a code
+  // failure goes back to the builder, and a failure that has not moved goes to the operator.
+  if (!build.testsPass) {
+    const buildSig = failSig(build.failingTests)
+    const d = build.defect
+    if (d && d.file && d.evidence && String(d.evidence).trim()) {
+      const reFiled = refusedClaims.has(claimKey(d))
+      if (reFiled || repairsUsed >= testRepairBudget) {
+        return { status: 'TEST-DEFECT-HALT', branch, base, worktree: workdir, reFiled, reason: reFiled
+          ? `The builder RE-FILED a defect claim the test-author already REFUSED, instead of fixing the code — halting rather than letting it argue with the verdict. The adjudicator's ruling stands: the test is correct and the production code is what is wrong. Fix the code on the branch (or, if you disagree with the adjudicator, fix the test yourself), then resume.`
+          : `A further test/harness defect was claimed after the repair budget (${testRepairBudget}) was spent — halting rather than grinding. Adjudicate it yourself, or re-run with a larger testRepairBudget.`,
+          defect: d, failing: build.failingTests || [], repairsUsed, plan }
+      }
+      repairsUsed++
+      phase('Repair')
+      const fix = await agent(
+        repairPrompt(d, `BUILDER (attempt ${tag})`, tag),
+        { agentType: 'pnk-baton-test-author', phase: 'Repair', label: `repair:build-${tag}`, schema: TESTFIX, model: 'opus' },
+      )
+      if (!fix) {
+        return { status: 'INFRA-FAILED', branch, base, worktree: workdir, reason: `Test-author repair agent died (API error) at ${tag}. Branch intact — resume rather than relaunching fresh.`, plan }
+      }
+      log(`Repair ${tag}: ${fix.verdict} — ${fix.rationale}`)
+      if (fix.verdict === 'REPAIRED') {
+        priorFindings = `The test-author ADJUDICATED your defect claim and REPAIRED the harness: ${fix.rationale}${fix.filesChanged?.length ? `\nFiles changed: ${fix.filesChanged.join(', ')}` : ''}\nThe contract has moved. Re-run \`${tests.runCommand}\` and satisfy the corrected tests with PRODUCTION CODE ONLY.`
+        lastFailSig = null   // the target moved; the no-progress counter restarts
+      } else {
+        refusedClaims.add(claimKey(d))
+        priorFindings = `Your defect claim was REFUSED by the test-author (the independent adjudicator): ${fix.rationale}\nThe test stands as written, so the fault is in the PRODUCTION CODE — fix the code. Do NOT re-file this claim: re-filing it ends the run.`
+        lastFailSig = buildSig
+      }
+      if (attempt === maxRetries) {
+        return { status: 'BLOCKED', branch, base, worktree: workdir, reason: `Out of build attempts (${maxRetries + 1}) after the harness claim was ${fix.verdict === 'REPAIRED' ? 'REPAIRED' : 'REFUSED'}.`, failing: build.failingTests || [], repairsUsed, plan }
+      }
+      continue
+    }
+    if (buildSig && buildSig === lastFailSig) {
+      return { status: 'NO-PROGRESS', branch, base, worktree: workdir, reason: `Two consecutive build attempts left exactly the SAME tests failing and no test-defect claim was filed — further attempts provably cannot help, so the run stops here instead of buying more. Triage by hand: either the code needs a decision the spec does not settle, or a test is defective and the builder did not recognise it.`, failing: build.failingTests || [], attemptsUsed: attempt + 1, plan }
+    }
+    lastFailSig = buildSig
+    priorFindings = `Your previous attempt did not reach green.${build.failingTests?.length ? `\nStill failing:\n${build.failingTests.map((f) => `- ${f}`).join('\n')}` : ''}\nFix the production code. If you now believe one of these tests is itself defective, FILE it via \`defect\` with concrete evidence rather than trying again blindly.`
+    log(`Build ${tag}: not green -> retry (Integrate skipped, nothing to integrate)`)
+    if (attempt === maxRetries) {
+      return { status: 'BLOCKED', branch, base, worktree: workdir, reason: `Builder could not reach green in ${maxRetries + 1} attempts and filed no test-defect claim.`, failing: build.failingTests || [], plan }
+    }
+    continue
+  }
 
   phase('Integrate')
   const integ = await agent(
     `You are the pnk-baton INTEGRATOR.\n${fields}\n\nIntegrate the latest ${base} into ${branch} (in this worktree) so the branch stays mergeable and the review diff is clean. Refresh ${base}, then \`git merge --no-ff ${base}\` into ${branch} (do NOT rebase). A large incoming changeset or many deletions coming from ${base} is EXPECTED — that is other people's work that has landed on ${base}, never something for you to undo or worry about. On a clean merge: re-run \`${tests.runCommand}\`. On conflict: \`git merge --abort\` and report CONFLICT with the conflicting paths; do NOT resolve it yourself.${baselineNote}\n\ntestsPass means NO NEW failures vs ${base}, NOT an all-green suite: after re-running, compute newFailures = (tests failing now) MINUS (the baseline list above), matching by test identifier. Report testsPass=true iff newFailures is empty. Pre-existing baseline failures do NOT count and must NEVER trigger a rebuild (the builder cannot fix non-branch code — looping on base debt is the bug this guards against). Put any NEW failures in \`newFailures\` and \`detail\`; if there are none, report CLEAN + testsPass=true even when the raw suite still shows baseline reds.`,
-    { agentType: 'pnk-baton-integrator', phase: 'Integrate', label: `integrate:attempt-${attempt + 1}`, schema: INTEG, model: 'opus' },
+    { agentType: 'pnk-baton-integrator', phase: 'Integrate', label: `integrate:${tag}`, schema: INTEG, model: 'opus' },
   )
   if (!integ) {
     return { status: 'INFRA-FAILED', branch, base, worktree: workdir, reason: `Integrator agent died (API error / session limit) on attempt ${attempt + 1} — no integrate result. Resume this run rather than relaunching fresh.`, plan }
@@ -359,6 +483,11 @@ for (let attempt = 0; attempt <= maxRetries; attempt++) {
   }
   if (!integ.testsPass) {
     const newFails = (integ.newFailures || []).filter(Boolean)
+    const integSig = failSig(newFails)
+    if (integSig && integSig === lastFailSig) {
+      return { status: 'NO-PROGRESS', branch, base, worktree: workdir, reason: `Integrating ${base} produced exactly the SAME new failures two attempts running — further attempts provably cannot help. Triage by hand: if these are TEST files asserting behaviour this change removed, the test-author must reconcile them (the builder cannot edit tests).`, newFailures: newFails, attemptsUsed: attempt + 1, plan }
+    }
+    lastFailSig = integSig
     const newFailList = newFails.length ? `\nNEW failures the branch introduced (baseline debt already excluded):\n${newFails.map((f) => `- ${f}`).join('\n')}` : ''
     priorFindings = `Integrating ${base} introduced NEW test failures (pre-existing ${base} debt already excluded — do NOT touch those). Fix them with production code only (do not edit tests).${newFailList}${integ.detail ? `\n${integ.detail}` : ''}`
     log(`Integrate attempt ${attempt + 1}: ${newFails.length || 'some'} NEW failure(s) vs ${base} -> rebuild`)
@@ -375,13 +504,13 @@ for (let attempt = 0; attempt <= maxRetries; attempt++) {
       agent(
         `You are the pnk-baton REVIEWER. Your assigned DIMENSION is: ${d}.\n${fields}${goalNote}\n\nReview ONLY the changes this branch introduces — run \`git diff $(git merge-base ${base} HEAD)..HEAD\`. ${base} has just been integrated, so its history is an ancestor: incoming ${base} commits and deletions are NOT this branch's change and must never be reviewed or "fixed". Assume the branch's own changes contain bugs. ` +
           (i === 0
-            ? `Additionally confirm the BUILDER did not modify any test file (git diff the test paths vs the test-author's commit) — if it did, REJECT. `
+            ? `Additionally confirm the BUILDER did not modify any test file — the single-writer guarantee. Check it by COMMIT, not by whole-branch diff: test files may legitimately change in commits whose subject starts with \`test:\` (the test-author's red phase, and any \`test: repair ...\` commit where the test-author adjudicated a claimed harness defect), but a test file touched by a \`feat:\` (builder) commit is a violation — REJECT. Run \`git log --format='%h %s' $(git merge-base ${base} HEAD)..HEAD\` and \`git show --stat <sha>\` per commit rather than assuming. If a \`test: repair\` commit exists, ALSO verify it did not weaken the contract: it must not delete a criterion's only test, loosen an assertion into a tautology, skip/xfail it, or narrow a set-equality into a subset — a repair that stops testing a requirement is a REJECT (the adjudicator that wrote it cannot be the only judge of it). `
             : '') +
           `Flag only gaps that affect correctness or the stated requirements; mark anything else Optional.\n\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}`,
         // label carries the attempt: review verdicts are per-diff, and the resume
         // cache keys on (prompt, opts) — without the attempt, round N replays
         // round 1's stale verdict against a new diff and the loop never converges.
-        { agentType: 'pnk-baton-reviewer', phase: 'Review', label: `review:${d}:attempt-${attempt + 1}`, schema: VERDICT, model: 'opus' },
+        { agentType: 'pnk-baton-reviewer', phase: 'Review', label: `review:${d}:${tag}`, schema: VERDICT, model: 'opus' },
       ),
     ),
   )
@@ -411,24 +540,64 @@ for (let attempt = 0; attempt <= maxRetries; attempt++) {
   }
 }
 
-// ---- Validate (runs BEFORE the Accept drift gate: a spec criterion demanding a
-// "recorded live check" is judged against THIS stage's measured output — the gate
-// must never demand an artifact only a later stage produces) ------------------
-let validation = null
-if (shipped && wantValidate) {
-  phase('Validate')
-  validation = await agent(
-    `You are the pnk-baton VALIDATOR (pre-merge pass).\n${fields}${goalNote}${envNote}\n\nRun the feature end-to-end against the ${env} infrastructure on ${branch}. Judge output against the success criteria — wrong data with exit 0 is a FAIL, and output that satisfies the letter of a criterion while missing THE GOAL is a FAIL (say which).\n\nYour report IS the run's recorded live check: the Accept gate judges "recorded live measurement" criteria against it, and the Document stage persists it into the spec's as-built. So put the CONCRETE MEASURED NUMBERS in \`evidence\` (counts, latencies, coverage X/Y, before-vs-after) — "it works" is not a measurement.\n\nALSO validate the spec's NORTH STAR CHECK live (the spec's "North Star check" section / criteria prefixed "north-star:"): the North Star rules governing this surface must hold on the REAL output, not just in unit tests — e.g. if the North Star says every item carries its real source links, count citation-less items in the actual response; one violation is a FAIL exactly like a failed success criterion. Report each rule's observed-vs-expected alongside the criteria.${isProd ? ' This is a PRODUCTION-targeted run: validation is MANDATORY — SKIPPED is NOT acceptable (a SKIP blocks the ship). Only PASS clears it.' : ' If the infrastructure is genuinely unavailable, report SKIPPED with the reason; do not fake a pass.'}\n\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}`,
-    { agentType: 'pnk-baton-validator', phase: 'Validate', schema: VALID, model: 'opus' },
-  )
-  if (!validation) {
-    // Validator agent died (terminal API error) — no verdict is not a verdict.
-    return { status: 'INFRA-FAILED', branch, base, worktree: workdir, reason: 'Validator agent died on an API error (no verdict). Branch intact — resume with resumeFromRunId to re-run validation.', plan }
+  // ---- Validate (inside the cycle, BEFORE the Accept drift gate: a spec criterion
+  // demanding a "recorded live check" is judged against THIS stage's measured output).
+  // A FAIL is triaged, not simply fatal: 'harness' goes to the test-author for a bounded
+  // adjudicated repair and re-validates (production code unchanged, so no re-review is
+  // owed); 'code' re-enters the outer cycle once so the reviewers see the fixed diff.
+  if (!shipped) {
+    return { status: 'BLOCKED', branch, base, worktree: workdir, reason: 'Build/review loop ended without a shipped diff.', outstanding: confirmed, plan }
   }
-  log(`Validation: ${validation.status}`)
-  if (validation.status === 'FAIL') {
-    return { status: 'VALIDATION-FAILED', branch, base, worktree: workdir, reason: 'Real-infrastructure validation FAILED (before the Accept gate). Branch left intact for fix-forward — do not delete it.', validation, plan }
+  if (wantValidate) {
+    for (let vTry = 0; ; vTry++) {
+      phase('Validate')
+      validation = await agent(
+        `You are the pnk-baton VALIDATOR (pre-merge pass).\n${fields}${goalNote}${envNote}\n\nRun the feature end-to-end against the ${env} infrastructure on ${branch}. Judge output against the success criteria — wrong data with exit 0 is a FAIL, and output that satisfies the letter of a criterion while missing THE GOAL is a FAIL (say which).\n\nYour report IS the run's recorded live check: the Accept gate judges "recorded live measurement" criteria against it, and the Document stage persists it into the spec's as-built. So put the CONCRETE MEASURED NUMBERS in \`evidence\` (counts, latencies, coverage X/Y, before-vs-after) — "it works" is not a measurement.\n\nALSO validate the spec's NORTH STAR CHECK live (the spec's "North Star check" section / criteria prefixed "north-star:"): the North Star rules governing this surface must hold on the REAL output, not just in unit tests — e.g. if the North Star says every item carries its real source links, count citation-less items in the actual response; one violation is a FAIL exactly like a failed success criterion. Report each rule's observed-vs-expected alongside the criteria.${isProd ? ' This is a PRODUCTION-targeted run: validation is MANDATORY — SKIPPED is NOT acceptable (a SKIP blocks the ship). Only PASS clears it.' : ' If the infrastructure is genuinely unavailable, report SKIPPED with the reason; do not fake a pass.'}\n\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}${faultNote}`,
+        { agentType: 'pnk-baton-validator', phase: 'Validate', label: `validate:${cyc}-t${vTry + 1}`, schema: VALID, model: 'opus' },
+      )
+      if (!validation) {
+        return { status: 'INFRA-FAILED', branch, base, worktree: workdir, reason: 'Validator agent died on an API error (no verdict). Branch intact — resume with resumeFromRunId to re-run validation.', plan }
+      }
+      log(`Validation ${cyc}-t${vTry + 1}: ${validation.status}${validation.faultDomain ? ` (fault: ${validation.faultDomain})` : ''}`)
+      if (validation.status !== 'FAIL') break
+
+      let fd = String(validation.faultDomain || 'unspecified').toLowerCase()
+      if (fd === 'harness') {
+        if (repairsUsed >= testRepairBudget) {
+          return { status: 'VALIDATION-FAILED', branch, base, worktree: workdir, faultDomain: 'harness', reason: `Validation FAILED on a harness defect but the repair budget (${testRepairBudget}) is spent. The CODE may well be correct — fix the harness by hand, or re-run with a larger testRepairBudget. Branch left intact.`, validation, repairsUsed, plan }
+        }
+        repairsUsed++
+        phase('Repair')
+        const vfix = await agent(
+          repairPrompt(
+            { file: 'the live validation harness named in the evidence below', testId: '', problem: 'the validator reports the CODE behaved correctly and the HARNESS assertion is what is wrong', evidence: `${validation.evidence}${validation.reproduction ? `\nReproduction: ${validation.reproduction}` : ''}` },
+            `VALIDATOR (${cyc}-t${vTry + 1})`,
+            `${cyc}-v${vTry + 1}`,
+          ),
+          { agentType: 'pnk-baton-test-author', phase: 'Repair', label: `repair:validate-${cyc}-t${vTry + 1}`, schema: TESTFIX, model: 'opus' },
+        )
+        if (!vfix) {
+          return { status: 'INFRA-FAILED', branch, base, worktree: workdir, reason: `Test-author repair agent died (API error) during validation triage at ${cyc}-t${vTry + 1}. Branch intact — resume rather than relaunching fresh.`, validation, plan }
+        }
+        log(`Repair validate-${cyc}-t${vTry + 1}: ${vfix.verdict} — ${vfix.rationale}`)
+        if (vfix.verdict === 'REPAIRED') continue   // re-validate only: no production code changed
+        // Refused: the harness stands, so the fault is the code after all.
+        fd = 'code'
+        carryover = `The harness-defect reading was REFUSED by the test-author: ${vfix.rationale}\n`
+      }
+      if (fd === 'code' && cycle < validateCodeCycles) {
+        carryover += `Real-infrastructure validation FAILED on ${env} and the fault is in THIS BRANCH'S PRODUCTION CODE, not the tests. Fix the code; do not touch test files.\nValidator evidence:\n${validation.evidence}${validation.reproduction ? `\nReproduction:\n${validation.reproduction}` : ''}`
+        needCodeCycle = true
+        break
+      }
+      return { status: 'VALIDATION-FAILED', branch, base, worktree: workdir, faultDomain: fd, reason: `Real-infrastructure validation FAILED (fault: ${fd})${fd === 'code' ? `; the ${validateCodeCycles} bounded code-fix cycle(s) are spent` : fd === 'environment' ? '; the infrastructure itself is the problem — nothing the pipeline can fix' : ''}. Branch left intact for fix-forward — do not delete it.`, validation, repairsUsed, plan }
+    }
+    if (needCodeCycle) {
+      log(`Validation FAILED on branch code — spending one bounded fix cycle: builder, re-test, re-review, re-validate.`)
+      continue
+    }
   }
+  break
 }
 
 // ---- Accept: post-build drift gate (UAT the finished diff before shipping) --
@@ -441,7 +610,7 @@ if (shipped) {
         ? '\n\nNOTE: a validation stage was requested but produced no record. Treat spec criteria that require a recorded live check as UNMET.'
         : '\n\nNOTE: no validation stage was requested for this run (staging without --validate and the plan did not demand one). If the spec\'s acceptance criteria REQUIRE a recorded live check, report that as a finding recommending a re-run with --validate — do not demand an artifact no stage of this run configuration produces.')
   accept = await agent(
-    `You are the pnk-baton DRIFT-CHECKER in **post-build** mode. The work is built, tested, and the adversarial reviewers PASSED. Perform user-acceptance-style alignment validation on the ACTUAL diff before it ships.\n${fields}${goalNote}\n\n${driftNote}${envNote}\n\nRead the branch's own change: \`git -C ${workdir} diff $(git -C ${workdir} merge-base ${base} HEAD)..HEAD\`. ${base} is integrated, so incoming ${base} commits/deletions are NOT this branch's change — never judge them.\n\nSpec being implemented: ${spec}\nPlanner summary: ${plan.summary}\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}\n\nRun these three MANDATORY audits (each produces explicit output, not a holistic impression):\n1. **Deletion audit** — from the diff, list EVERY behavior-shaping element the change removed or weakened: each deleted/bypassed filter, limit, guard, gate, predicate, fallback, or check (look at removed lines, not just added ones — removals are where silent scope change lives). Match each against the spec's change-map REMOVE lines. A removal with no authorizing REMOVE line in the spec is DRIFT (axis: spec, severity High minimum), no matter how good the builder's reason was — cite the removed code and the spec's silence as evidence.\n2. **Principle checklist** — for the surface this change touches, enumerate the governing North Star principles/rules ONE BY ONE and verdict each individually (holds / violated, with evidence from the diff or, where checkable, the running behavior). Do not compress this into one overall judgment — a checklist cannot skip an item; a judgment can.\n3. **Canon staleness** — does the shipped behavior make any sentence of the North Star / canonical references stale (the code now rightly does something the canon doesn't say, or says differently)? List each stale sentence in \`canonStale\` (quote + file) so the operator can update the canon deliberately. Staleness alone is not DRIFT — silent divergence is; reporting it here is what keeps it non-silent.\n\nTHEN confirm the SHIPPED work still aligns: did it drift from the plan/spec during build? Does the completed change actually deliver a roadmap item (acceptance), or solve something adjacent? Did it silently lose data, take a destructive/irreversible action, or skip staging? Honor project-north-star, baton-principles, how-we-do-things, spec, roadmap. Judge neutrally. DRIFT on genuine Critical/High/MEDIUM misalignment, every blocking finding citing concrete evidence (or downgrade to Optional); ROADMAP-MISSING only when a missing roadmap is the sole blocking issue; otherwise ALIGNED. Do not over-block correct, minimal, on-roadmap work, and do not rubber-stamp drift.${validationEvidence}`,
+    `You are the pnk-baton DRIFT-CHECKER in **post-build** mode. The work is built, tested, and the adversarial reviewers PASSED. Perform user-acceptance-style alignment validation on the ACTUAL diff before it ships.\n${fields}${goalNote}\n\n${driftNote}${envNote}\n\nRead the branch's own change: \`git -C ${workdir} diff $(git -C ${workdir} merge-base ${base} HEAD)..HEAD\`. ${base} is integrated, so incoming ${base} commits/deletions are NOT this branch's change — never judge them.\n\nSpec being implemented: ${spec}\nPlanner summary: ${plan.summary}\nSuccess criteria:\n${plan.successCriteria.map((c, n) => `${n + 1}. ${c}`).join('\n')}\n\nRun these four MANDATORY audits (each produces explicit output, not a holistic impression):\n1. **Deletion audit** — from the diff, list EVERY behavior-shaping element the change removed or weakened: each deleted/bypassed filter, limit, guard, gate, predicate, fallback, or check (look at removed lines, not just added ones — removals are where silent scope change lives). Match each against the spec's change-map REMOVE lines. A removal with no authorizing REMOVE line in the spec is DRIFT (axis: spec, severity High minimum), no matter how good the builder's reason was — cite the removed code and the spec's silence as evidence.\n2. **Principle checklist** — for the surface this change touches, enumerate the governing North Star principles/rules ONE BY ONE and verdict each individually (holds / violated, with evidence from the diff or, where checkable, the running behavior). Do not compress this into one overall judgment — a checklist cannot skip an item; a judgment can.\n3. **Harness-repair audit** — run \`git log --format='%h %s' $(git -C ${workdir} merge-base ${base} HEAD)..HEAD\` and look for any \`test: repair ...\` commit. Such a commit means the builder or validator claimed a test/harness was itself defective and the test-author ADJUDICATED that claim mid-run. It is the one place in this pipeline where the contract itself moved after being written, so audit it directly: \`git show <sha>\`. Confirm the repair fixed a genuine defect (a wrong expectation, a broken fixture, a pin that only held in another environment) and did NOT weaken the contract — every success criterion must still have a test that would fail if the requirement were unmet. A repair that deletes a criterion's only test, loosens an assertion into a tautology, skips/xfails it, or narrows a set-equality into a subset is DRIFT (axis: spec, High minimum), because the code was then made to pass by moving the target. If there is no such commit, say so and move on.\n4. **Canon staleness** — does the shipped behavior make any sentence of the North Star / canonical references stale (the code now rightly does something the canon doesn't say, or says differently)? List each stale sentence in \`canonStale\` (quote + file) so the operator can update the canon deliberately. Staleness alone is not DRIFT — silent divergence is; reporting it here is what keeps it non-silent.\n\nTHEN confirm the SHIPPED work still aligns: did it drift from the plan/spec during build? Does the completed change actually deliver a roadmap item (acceptance), or solve something adjacent? Did it silently lose data, take a destructive/irreversible action, or skip staging? Honor project-north-star, baton-principles, how-we-do-things, spec, roadmap. Judge neutrally. DRIFT on genuine Critical/High/MEDIUM misalignment, every blocking finding citing concrete evidence (or downgrade to Optional); ROADMAP-MISSING only when a missing roadmap is the sole blocking issue; otherwise ALIGNED. Do not over-block correct, minimal, on-roadmap work, and do not rubber-stamp drift.${validationEvidence}`,
     { agentType: 'pnk-baton-drift-checker', phase: 'Accept', label: 'accept:post-build', schema: DRIFT, model: 'opus' },
   )
   log(`Accept: ${accept.status} (roadmap=${accept.roadmapFound}); ${blockingFindings(accept).length} blocking / ${(accept.findings || []).length} total finding(s)`)
@@ -519,6 +688,7 @@ return {
   },
   integrated: base,
   documented: documented ? documented.status : 'skipped',
+  testRepairs: repairsUsed,
   validation: validation ? validation.status : (wantValidate ? 'unavailable' : 'not-requested'),
   merge: merge ? merge.status : (!wantMerge ? 'disabled' : (!validationOk ? 'skipped (validation not PASS)' : 'skipped')),
   mergedCommit: merged ? merge.baseCommit : undefined,

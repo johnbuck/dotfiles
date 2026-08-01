@@ -16,6 +16,7 @@ pnk-baton is spread across the four directories Claude Code reads each kind of c
 | `workflows/pnk-baton.js` | `~/.claude/workflows/` | The orchestration script |
 | `commands/pnk-baton.md` | `~/.claude/commands/` | The `/pnk-baton` slash command |
 | `hooks/pnk-baton-guard.sh` | `~/.claude/hooks/` | Optional feature-branch guard (opt-in per repo) |
+| `tests/pnk-baton-flow.test.mjs` | *(not installed)* | Control-flow regression suite. Run it after any edit to the workflow script: `node claude/tests/pnk-baton-flow.test.mjs` |
 
 `claude/install.sh` copies all four into `~/.claude/` (backing up anything
 it overwrites). After install, restart Claude Code so it registers the agents,
@@ -23,7 +24,7 @@ workflow, and command.
 
 ## How it works
 
-`/pnk-baton <spec> [--validate] [--base <branch>] [--ssh <user@host>] [--worktree <path>] [--require-roadmap] [--north-star <path>] [--roadmap <path>]`
+`/pnk-baton <spec> --env <staging|prod> [--validate] [--base <branch>] [--ssh <user@host>] [--worktree <path>] [--require-roadmap] [--north-star <path>] [--roadmap <path>] [--test-repair-budget <n>] [--validate-code-cycles <n>]`
 invokes the `pnk-baton` workflow, which orchestrates the agents below as a single
 deterministic script. Each run gets its **own git worktree** (so several `/pnk-baton`
 runs are safe concurrently), and stage results live in script variables, never the main
@@ -32,18 +33,22 @@ session context.
 ```
 setup (worktree) → planner → drift-checker (ALIGN, pre-build) → test-author (red) → builder (green) → integrate base → reviewer ×N (parallel)
                        ↑_______________________________ retry on REJECT _______________________________|
-       → drift-checker (ACCEPT, post-build UAT) → [optional] validator → document (as-built) → merge (ff, local) → report
+                       ↑__ builder files a test-defect claim → test-author ADJUDICATES (REPAIRED | REFUSED) __|
+       → [optional] validator ─┬─ PASS ─→ drift-checker (ACCEPT, post-build UAT) → document (as-built) → merge (ff, local) → report
+                               ├─ FAIL/harness ─→ test-author adjudicates → re-validate only
+                               ├─ FAIL/code ────→ back into the build cycle once, then re-review + re-validate
+                               └─ FAIL/environment ─→ halt (nothing the pipeline can fix)
 ```
 
 | Agent | Role | Writes? |
 |---|---|---|
 | `pnk-baton-planner` | spec → testable design + success criteria | no (read-only) |
 | `pnk-baton-drift-checker` | alignment gate — work vs North Star / principles / spec / roadmap; pre-build + post-build UAT | no (read-only) |
-| `pnk-baton-test-author` | failing tests that define the contract | tests only |
+| `pnk-baton-test-author` | failing tests that define the contract; also the independent **adjudicator** of a claimed test/harness defect (may REFUSE) | tests only |
 | `pnk-baton-builder` | the single writer — make tests pass | prod code |
 | `pnk-baton-integrator` | create the run's worktree; merge latest base in before review | merge commit only |
 | `pnk-baton-reviewer` | independent, diff-only, adversarial (one dimension each) | no (read-only) |
-| `pnk-baton-validator` *(optional)* | real-infra end-to-end judgment | no (read-only) |
+| `pnk-baton-validator` *(optional)* | real-infra end-to-end judgment; names the **fault domain** on a FAIL (code / harness / environment) | no (read-only) |
 | `pnk-baton-documenter` | append an as-built / lessons section to the spec | spec/doc only |
 | `pnk-baton-merger` | fast-forward base to the branch (local only, never pushes) | base ref only |
 
@@ -132,6 +137,33 @@ continues; pass `--require-roadmap` to make it a hard `ROADMAP-MISSING` failure.
   worktree (`.pnk-baton-worktrees/<branch>`, a sibling of the repo); each *run* gets
   its own, so concurrent `/pnk-baton` runs never collide. Cleaned up on a successful merge.
 - **Gates are code**, not prompts — skipping a stage is impossible.
+- **A defective test is a routed fault, not a dead end.** The builder may not edit tests —
+  that is the anti-gaming guarantee — so without a route back, a test that no correct code
+  can satisfy would burn every remaining attempt and then kill the run with the whole
+  pipeline paid for. Instead the builder (or the validator) **files a defect claim with
+  evidence**, and the **test-author adjudicates it** as an independent judge: it may
+  `REPAIRED` the defect, or `REFUSED` it — *"the test is right, your code is wrong"* — which
+  sends the fault straight back to the builder. author ≠ builder survives intact, because
+  the agent that writes the code still never edits its own contract. Bounded by
+  `--test-repair-budget` (default 1); a refusal costs the budget too, and re-filing a
+  refused claim ends the run. Any `test: repair` commit is independently audited by the
+  reviewer and the post-build Accept gate for contract weakening.
+- **A run stops the moment more spending cannot help.** Three stop-losses, all in code:
+  a build that never reached green **skips Integrate** (there is nothing to integrate);
+  two consecutive attempts leaving an **identical failing set** abort as `NO-PROGRESS`
+  rather than exhausting `maxRetries`; and every halt carries the diagnosis (`defect`,
+  `failing`, `faultDomain`, `testRepairs`) instead of just a status.
+- **A validation failure is triaged, not simply fatal.** The validator must name the
+  `faultDomain`: `harness` goes to the test-author for an adjudicated repair and
+  **re-validates only** (production code never changed, so no re-review is owed);
+  `code` re-enters the build cycle once (`--validate-code-cycles`, default 1) so the
+  reviewers see the fixed diff, rather than discarding a fully-paid-for pipeline;
+  `environment` halts immediately, since nothing in the pipeline can fix it.
+- **Expectations are grounded in the target environment.** A count, id, or exact set
+  measured on one corpus and asserted against another is a manufactured failure no
+  correct code can satisfy — the single most common source of these stalls. The
+  test-author must re-derive live-data expectations against `--env`, and the Align
+  rubric fails a spec that pins a value without saying which environment it holds in.
 - **Alignment is gated, not assumed.** An independent drift-checker validates the work
   against the project's North Star, the roadmap, the spec, and the engineering principles —
   before building (pre-build) and before shipping (post-build UAT). Bugs are the reviewer's

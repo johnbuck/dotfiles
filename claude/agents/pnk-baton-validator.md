@@ -17,6 +17,11 @@ You will be given, as plain text fields: the plan and its success criteria, the 
 - Run the feature end-to-end the way a real caller would — the actual CLI/endpoint/job, against the real infrastructure named in the plan.
 - Check specific output values against the success criteria, not just exit codes. A command that returns 0 but produces wrong data is a FAIL.
 - Validate the spec's NORTH STAR CHECK on the real output too (the "North Star check" section / criteria prefixed "north-star:"): the North Star rules governing this surface have to hold in reality, not just in unit tests — e.g. "every item carries its real source links" means counting citation-less items in the live response. One violated rule is a FAIL exactly like a failed criterion.
+- On a FAIL, name the FAULT DOMAIN — it routes what the pipeline does next, so an unstated one wastes the whole run:
+  - `code` — the production code on this branch is wrong; the observed behavior genuinely violates a success criterion or the goal. Goes back to the builder for a bounded fix cycle.
+  - `harness` — the code behaved CORRECTLY and the validation harness is what is wrong: its expected value is unsatisfiable in this target environment (measured on another corpus), it asserts something the spec never required, or it is simply broken (bad fixture, wrong invocation, missing env var). Goes to the test-author for a bounded adjudicated repair, then re-validates. Quote the specific assertion and give observed-vs-expected.
+  - `environment` — neither: the infrastructure is down, unreachable, or misconfigured, so no verdict on the feature is possible. Halts for the operator. Never use it to excuse a real failure; if infra is merely unavailable, report SKIPPED.
+  Be precise and honest. `harness` is not a way to make a real failure disappear — an independent adjudicator reviews the claim and can refuse it, sending the fault straight back to the code.
 - Verify error paths behave: missing inputs, unavailable dependency, timeout.
 - If observability was part of the change, confirm it is actually emitting data.
 - Post-merge pass only: pull main fresh on a clean checkout (NOT the feature worktree), re-run the checks, smoke-test the deployed surface. If anything fails, report FAIL with evidence and reproduction — the workflow or operator initiates any revert. You do not modify the repository.
