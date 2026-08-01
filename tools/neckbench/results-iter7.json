@@ -1,0 +1,1003 @@
+{
+  "beard": {
+    "gt": {
+      "waist": true,
+      "z_lo": 0.832,
+      "z_hi": 0.8485,
+      "z_mid": 0.8402499999999999,
+      "area": 0.0098653,
+      "prominence": 1.8683364925547117,
+      "width": 0.01650000000000007,
+      "H": 1.0125442743301392,
+      "z_floor": 0.0,
+      "reason": ""
+    },
+    "detectors": {
+      "A_width_current": {
+        "bucket": "ok",
+        "err": 0.0172,
+        "note": "",
+        "answer": 0.8657,
+        "raw": {
+          "neck_z": 0.8657,
+          "metric": 0.1806,
+          "window_edge": false,
+          "confidence": 0.7,
+          "low_confidence": false,
+          "method": "width_argmin"
+        }
+      },
+      "B_area_min": {
+        "bucket": "good",
+        "err": 0.0,
+        "note": "",
+        "answer": 0.8387,
+        "raw": {
+          "neck_z": 0.8387,
+          "metric": 0.0113,
+          "window_edge": false,
+          "confidence": 0.7,
+          "low_confidence": false,
+          "method": "area_argmin"
+        }
+      },
+      "C_area_prominence": {
+        "bucket": "good",
+        "err": 0.0,
+        "note": "",
+        "answer": 0.8404,
+        "raw": {
+          "neck_z": 0.8404,
+          "neck_base_z": 0.8252,
+          "neck_join_z": 0.9096,
+          "prominence": 1.7747,
+          "plateau": 0.0101,
+          "confidence": 0.3514,
+          "low_confidence": false,
+          "method": "area_prominence"
+        }
+      },
+      "E_head_island": {
+        "bucket": "bad",
+        "err": 0.105,
+        "note": "",
+        "answer": 0.9535,
+        "raw": {
+          "neck_z": 0.9535,
+          "neck_base_z": 0.9501,
+          "neck_join_z": 0.9535,
+          "prominence": 2.4859,
+          "plateau": 0.0,
+          "confidence": 0.501,
+          "low_confidence": false,
+          "method": "head_island",
+          "islands": 8
+        }
+      }
+    }
+  },
+  "braid": {
+    "gt": {
+      "waist": true,
+      "z_lo": 0.853,
+      "z_hi": 0.853,
+      "z_mid": 0.853,
+      "area": 0.0050596,
+      "prominence": 3.6429164360819035,
+      "width": 0.0,
+      "H": 1.0125442743301392,
+      "z_floor": 0.0,
+      "reason": ""
+    },
+    "detectors": {
+      "A_width_current": {
+        "bucket": "good",
+        "err": 0.0026,
+        "note": "",
+        "answer": 0.8556,
+        "raw": {
+          "neck_z": 0.8556,
+          "metric": 0.1772,
+          "window_edge": false,
+          "confidence": 0.7,
+          "low_confidence": false,
+          "method": "width_argmin"
+        }
+      },
+      "B_area_min": {
+        "bucket": "ok",
+        "err": 0.0143,
+        "note": "",
+        "answer": 0.8387,
+        "raw": {
+          "neck_z": 0.8387,
+          "metric": 0.0073,
+          "window_edge": false,
+          "confidence": 0.7,
+          "low_confidence": false,
+          "method": "area_argmin"
+        }
+      },
+      "C_area_prominence": {
+        "bucket": "ok",
+        "err": 0.0109,
+        "note": "",
+        "answer": 0.8421,
+        "raw": {
+          "neck_z": 0.8421,
+          "neck_base_z": 0.8286,
+          "neck_join_z": 0.8691,
+          "prominence": 2.7601,
+          "plateau": 0.0068,
+          "confidence": 0.9333,
+          "low_confidence": false,
+          "method": "area_prominence"
+        }
+      },
+      "E_head_island": {
+        "bucket": "ok",
+        "err": 0.0109,
+        "note": "",
+        "answer": 0.8421,
+        "raw": {
+          "neck_z": 0.8421,
+          "neck_base_z": 0.8286,
+          "neck_join_z": 0.8691,
+          "prominence": 2.7601,
+          "plateau": 0.0068,
+          "confidence": 0.9333,
+          "low_confidence": false,
+          "method": "head_island",
+          "islands": 1
+        }
+      }
+    }
+  },
+  "cape": {
+    "gt": {
+      "waist": true,
+      "z_lo": 0.8335,
+      "z_hi": 0.849,
+      "z_mid": 0.84125,
+      "area": 0.0038325,
+      "prominence": 4.8093150684931505,
+      "width": 0.015499999999999958,
+      "H": 1.0125442743301392,
+      "z_floor": 0.0,
+      "reason": ""
+    },
+    "detectors": {
+      "A_width_current": {
+        "bucket": "good",
+        "err": 0.0,
+        "note": "",
+        "answer": 0.8421,
+        "raw": {
+          "neck_z": 0.8421,
+          "metric": 0.139,
+          "window_edge": false,
+          "confidence": 0.7,
+          "low_confidence": false,
+          "method": "width_argmin"
+        }
+      },
+      "B_area_min": {
+        "bucket": "good",
+        "err": 0.0,
+        "note": "",
+        "answer": 0.8421,
+        "raw": {
+          "neck_z": 0.8421,
+          "metric": 0.0038,
+          "window_edge": false,
+          "confidence": 0.7,
+          "low_confidence": false,
+          "method": "area_argmin"
+        }
+      },
+      "C_area_prominence": {
+        "bucket": "good",
+        "err": 0.0,
+        "note": "",
+        "answer": 0.8421,
+        "raw": {
+          "neck_z": 0.8421,
+          "neck_base_z": 0.8353,
+          "neck_join_z": 0.8522,
+          "prominence": 5.3333,
+          "plateau": 0.0068,
+          "confidence": 0.9333,
+          "low_confidence": false,
+          "method": "area_prominence"
+        }
+      },
+      "E_head_island": {
+        "bucket": "good",
+        "err": 0.0,
+        "note": "",
+        "answer": 0.8421,
+        "raw": {
+          "neck_z": 0.8421,
+          "neck_base_z": 0.8353,
+          "neck_join_z": 0.8488,
+          "prominence": 6.481,
+          "plateau": 0.0068,
+          "confidence": 0.56,
+          "low_confidence": false,
+          "method": "head_island",
+          "islands": 7
+        }
+      }
+    }
+  },
+  "collar": {
+    "gt": {
+      "waist": true,
+      "z_lo": 0.8395,
+      "z_hi": 0.849,
+      "z_mid": 0.84425,
+      "area": 0.0038328,
+      "prominence": 4.808938634940513,
+      "width": 0.009499999999999953,
+      "H": 1.0125442743301392,
+      "z_floor": 0.0,
+      "reason": ""
+    },
+    "detectors": {
+      "A_width_current": {
+        "bucket": "good",
+        "err": 0.0,
+        "note": "",
+        "answer": 0.8455,
+        "raw": {
+          "neck_z": 0.8455,
+          "metric": 0.1396,
+          "window_edge": false,
+          "confidence": 0.7,
+          "low_confidence": false,
+          "method": "width_argmin"
+        }
+      },
+      "B_area_min": {
+        "bucket": "good",
+        "err": 0.0,
+        "note": "",
+        "answer": 0.8455,
+        "raw": {
+          "neck_z": 0.8455,
+          "metric": 0.0046,
+          "window_edge": false,
+          "confidence": 0.7,
+          "low_confidence": false,
+          "method": "area_argmin"
+        }
+      },
+      "C_area_prominence": {
+        "bucket": "good",
+        "err": 0.0,
+        "note": "",
+        "answer": 0.8455,
+        "raw": {
+          "neck_z": 0.8455,
+          "neck_base_z": 0.8455,
+          "neck_join_z": 0.8556,
+          "prominence": 4.3948,
+          "plateau": 0.0,
+          "confidence": 1.0,
+          "low_confidence": false,
+          "method": "area_prominence"
+        }
+      },
+      "E_head_island": {
+        "bucket": "good",
+        "err": 0.0,
+        "note": "",
+        "answer": 0.8455,
+        "raw": {
+          "neck_z": 0.8455,
+          "neck_base_z": 0.8455,
+          "neck_join_z": 0.8556,
+          "prominence": 4.3948,
+          "plateau": 0.0,
+          "confidence": 0.6,
+          "low_confidence": false,
+          "method": "head_island",
+          "islands": 2
+        }
+      }
+    }
+  },
+  "gorget": {
+    "gt": {
+      "waist": true,
+      "z_lo": 0.8615,
+      "z_hi": 0.8635,
+      "z_mid": 0.8625,
+      "area": 0.0084345,
+      "prominence": 2.1852747643606616,
+      "width": 0.0020000000000000018,
+      "H": 1.0125442743301392,
+      "z_floor": 0.0,
+      "reason": ""
+    },
+    "detectors": {
+      "A_width_current": {
+        "bucket": "good",
+        "err": 0.0,
+        "note": "",
+        "answer": 0.8624,
+        "raw": {
+          "neck_z": 0.8624,
+          "metric": 0.204,
+          "window_edge": false,
+          "confidence": 0.7,
+          "low_confidence": false,
+          "method": "width_argmin"
+        }
+      },
+      "B_area_min": {
+        "bucket": "good",
+        "err": 0.0022,
+        "note": "",
+        "answer": 0.8657,
+        "raw": {
+          "neck_z": 0.8657,
+          "metric": 0.0088,
+          "window_edge": false,
+          "confidence": 0.7,
+          "low_confidence": false,
+          "method": "area_argmin"
+        }
+      },
+      "C_area_prominence": {
+        "bucket": "good",
+        "err": 0.0022,
+        "note": "",
+        "answer": 0.8657,
+        "raw": {
+          "neck_z": 0.8657,
+          "neck_base_z": 0.8624,
+          "neck_join_z": 0.8826,
+          "prominence": 2.2778,
+          "plateau": 0.0,
+          "confidence": 0.7049,
+          "low_confidence": false,
+          "method": "area_prominence"
+        }
+      },
+      "E_head_island": {
+        "bucket": "ok",
+        "err": 0.016,
+        "note": "",
+        "answer": 0.8455,
+        "raw": {
+          "neck_z": 0.8455,
+          "neck_base_z": 0.8421,
+          "neck_join_z": 0.8455,
+          "prominence": 2.8311,
+          "plateau": 0.0,
+          "confidence": 0.6,
+          "low_confidence": false,
+          "method": "head_island",
+          "islands": 14
+        }
+      }
+    }
+  },
+  "hood": {
+    "gt": {
+      "waist": false,
+      "z_lo": 0.82,
+      "z_hi": 0.8625,
+      "z_mid": 0.84125,
+      "area": 0.0310287,
+      "prominence": 1.1350330500472146,
+      "width": 0.04250000000000009,
+      "H": 1.0387898683547974,
+      "z_floor": 0.0,
+      "reason": "prominence 1.14"
+    },
+    "detectors": {
+      "A_width_current": {
+        "bucket": "bad",
+        "err": 0.0,
+        "note": "confident answer where no waist exists",
+        "answer": 0.7462,
+        "raw": {
+          "neck_z": 0.7462,
+          "metric": 0.331,
+          "window_edge": false,
+          "confidence": 0.7,
+          "low_confidence": false,
+          "method": "width_argmin"
+        }
+      },
+      "B_area_min": {
+        "bucket": "bad",
+        "err": 0.0,
+        "note": "confident answer where no waist exists",
+        "answer": 0.8466,
+        "raw": {
+          "neck_z": 0.8466,
+          "metric": 0.0244,
+          "window_edge": false,
+          "confidence": 0.7,
+          "low_confidence": false,
+          "method": "area_argmin"
+        }
+      },
+      "C_area_prominence": {
+        "bucket": "good",
+        "err": 0.0,
+        "note": "flagged as low confidence, correctly",
+        "answer": 0.8501,
+        "raw": {
+          "neck_z": 0.8501,
+          "neck_base_z": 0.8085,
+          "neck_join_z": 0.9713,
+          "prominence": 1.5405,
+          "plateau": 0.0069,
+          "confidence": 0.2278,
+          "low_confidence": true,
+          "method": "area_prominence"
+        }
+      },
+      "E_head_island": {
+        "bucket": "bad",
+        "err": 0.0,
+        "note": "confident answer where no waist exists",
+        "answer": 0.696,
+        "raw": {
+          "neck_z": 0.696,
+          "neck_base_z": 0.6943,
+          "neck_join_z": 0.6977,
+          "prominence": 2.9286,
+          "plateau": 0.0035,
+          "confidence": 0.58,
+          "low_confidence": false,
+          "method": "head_island",
+          "islands": 8
+        }
+      }
+    }
+  },
+  "jaw_trap": {
+    "gt": {
+      "waist": true,
+      "z_lo": 0.8335,
+      "z_hi": 0.849,
+      "z_mid": 0.84125,
+      "area": 0.0047259,
+      "prominence": 3.9001460039357583,
+      "width": 0.015499999999999958,
+      "H": 1.0125442743301392,
+      "z_floor": 0.0,
+      "reason": ""
+    },
+    "detectors": {
+      "A_width_current": {
+        "bucket": "good",
+        "err": 0.0,
+        "note": "",
+        "answer": 0.8421,
+        "raw": {
+          "neck_z": 0.8421,
+          "metric": 0.139,
+          "window_edge": false,
+          "confidence": 0.7,
+          "low_confidence": false,
+          "method": "width_argmin"
+        }
+      },
+      "B_area_min": {
+        "bucket": "good",
+        "err": 0.0,
+        "note": "",
+        "answer": 0.8421,
+        "raw": {
+          "neck_z": 0.8421,
+          "metric": 0.0057,
+          "window_edge": false,
+          "confidence": 0.7,
+          "low_confidence": false,
+          "method": "area_argmin"
+        }
+      },
+      "C_area_prominence": {
+        "bucket": "good",
+        "err": 0.0,
+        "note": "",
+        "answer": 0.8421,
+        "raw": {
+          "neck_z": 0.8421,
+          "neck_base_z": 0.832,
+          "neck_join_z": 0.8556,
+          "prominence": 3.5392,
+          "plateau": 0.0068,
+          "confidence": 0.9333,
+          "low_confidence": false,
+          "method": "area_prominence"
+        }
+      },
+      "E_head_island": {
+        "bucket": "good",
+        "err": 0.0,
+        "note": "",
+        "answer": 0.8421,
+        "raw": {
+          "neck_z": 0.8421,
+          "neck_base_z": 0.8387,
+          "neck_join_z": 0.8488,
+          "prominence": 6.481,
+          "plateau": 0.0068,
+          "confidence": 0.56,
+          "low_confidence": false,
+          "method": "head_island",
+          "islands": 7
+        }
+      }
+    }
+  },
+  "long_hair": {
+    "gt": {
+      "waist": true,
+      "z_lo": 0.832,
+      "z_hi": 0.8355,
+      "z_mid": 0.83375,
+      "area": 0.0102282,
+      "prominence": 2.399474003245928,
+      "width": 0.0035000000000000586,
+      "H": 1.0196737051010132,
+      "z_floor": 0.0,
+      "reason": ""
+    },
+    "detectors": {
+      "A_width_current": {
+        "bucket": "bad",
+        "err": 0.0227,
+        "note": "",
+        "answer": 0.8582,
+        "raw": {
+          "neck_z": 0.8582,
+          "metric": 0.2488,
+          "window_edge": false,
+          "confidence": 0.7,
+          "low_confidence": false,
+          "method": "width_argmin"
+        }
+      },
+      "B_area_min": {
+        "bucket": "good",
+        "err": 0.0023,
+        "note": "",
+        "answer": 0.8378,
+        "raw": {
+          "neck_z": 0.8378,
+          "metric": 0.0119,
+          "window_edge": false,
+          "confidence": 0.7,
+          "low_confidence": false,
+          "method": "area_argmin"
+        }
+      },
+      "C_area_prominence": {
+        "bucket": "good",
+        "err": 0.004,
+        "note": "",
+        "answer": 0.8395,
+        "raw": {
+          "neck_z": 0.8395,
+          "neck_base_z": 0.8276,
+          "neck_join_z": 0.865,
+          "prominence": 2.2284,
+          "plateau": 0.0034,
+          "confidence": 0.6515,
+          "low_confidence": false,
+          "method": "area_prominence"
+        }
+      },
+      "E_head_island": {
+        "bucket": "good",
+        "err": 0.0023,
+        "note": "",
+        "answer": 0.8378,
+        "raw": {
+          "neck_z": 0.8378,
+          "neck_base_z": 0.8344,
+          "neck_join_z": 0.8378,
+          "prominence": 4.2766,
+          "plateau": 0.0,
+          "confidence": 0.6,
+          "low_confidence": false,
+          "method": "head_island",
+          "islands": 10
+        }
+      }
+    }
+  },
+  "no_neck": {
+    "gt": {
+      "waist": false,
+      "z_lo": 0.846,
+      "z_hi": 0.8595,
+      "z_mid": 0.85275,
+      "area": 0.0178224,
+      "prominence": 1.0361511356495197,
+      "width": 0.013500000000000068,
+      "H": 0.9498039484024048,
+      "z_floor": 0.0,
+      "reason": "prominence 1.04"
+    },
+    "detectors": {
+      "A_width_current": {
+        "bucket": "good",
+        "err": 0.0,
+        "note": "flagged as low confidence, correctly",
+        "answer": 0.9007,
+        "raw": {
+          "neck_z": 0.9007,
+          "metric": 0.2754,
+          "window_edge": true,
+          "confidence": 0.15,
+          "low_confidence": true,
+          "method": "width_argmin"
+        }
+      },
+      "B_area_min": {
+        "bucket": "good",
+        "err": 0.0,
+        "note": "flagged as low confidence, correctly",
+        "answer": 0.9007,
+        "raw": {
+          "neck_z": 0.9007,
+          "metric": 0.0141,
+          "window_edge": true,
+          "confidence": 0.15,
+          "low_confidence": true,
+          "method": "area_argmin"
+        }
+      },
+      "C_area_prominence": {
+        "bucket": "good",
+        "err": 0.0,
+        "note": "flagged as low confidence, correctly",
+        "answer": 0.668,
+        "raw": {
+          "neck_z": 0.668,
+          "neck_base_z": 0.5525,
+          "neck_join_z": 0.7804,
+          "prominence": 1.3417,
+          "plateau": 0.0032,
+          "confidence": 0.1158,
+          "low_confidence": true,
+          "method": "area_prominence"
+        }
+      },
+      "E_head_island": {
+        "bucket": "bad",
+        "err": 0.0,
+        "note": "confident answer where no waist exists",
+        "answer": 0.668,
+        "raw": {
+          "neck_z": 0.668,
+          "neck_base_z": 0.6664,
+          "neck_join_z": 0.6696,
+          "prominence": 2.9626,
+          "plateau": 0.0032,
+          "confidence": 0.58,
+          "low_confidence": false,
+          "method": "head_island",
+          "islands": 21
+        }
+      }
+    }
+  },
+  "pauldrons": {
+    "gt": {
+      "waist": true,
+      "z_lo": 0.866,
+      "z_hi": 0.8675,
+      "z_mid": 0.86675,
+      "area": 0.0094897,
+      "prominence": 1.9422847929860794,
+      "width": 0.0015000000000000568,
+      "H": 1.0125442743301392,
+      "z_floor": 0.0,
+      "reason": ""
+    },
+    "detectors": {
+      "A_width_current": {
+        "bucket": "good",
+        "err": 0.0016,
+        "note": "",
+        "answer": 0.8691,
+        "raw": {
+          "neck_z": 0.8691,
+          "metric": 0.2311,
+          "window_edge": false,
+          "confidence": 0.7,
+          "low_confidence": false,
+          "method": "width_argmin"
+        }
+      },
+      "B_area_min": {
+        "bucket": "good",
+        "err": 0.005,
+        "note": "",
+        "answer": 0.8725,
+        "raw": {
+          "neck_z": 0.8725,
+          "metric": 0.0126,
+          "window_edge": false,
+          "confidence": 0.7,
+          "low_confidence": false,
+          "method": "area_argmin"
+        }
+      },
+      "C_area_prominence": {
+        "bucket": "ok",
+        "err": 0.005,
+        "note": "low confidence",
+        "answer": 0.8725,
+        "raw": {
+          "neck_z": 0.8725,
+          "neck_base_z": 0.8657,
+          "neck_join_z": 0.9906,
+          "prominence": 1.5884,
+          "plateau": 0.0,
+          "confidence": 0.274,
+          "low_confidence": true,
+          "method": "area_prominence"
+        }
+      },
+      "E_head_island": {
+        "bucket": "bad",
+        "err": 0.0273,
+        "note": "",
+        "answer": 0.8387,
+        "raw": {
+          "neck_z": 0.8387,
+          "neck_base_z": 0.8387,
+          "neck_join_z": 0.8455,
+          "prominence": 8.3027,
+          "plateau": 0.0,
+          "confidence": 0.6,
+          "low_confidence": false,
+          "method": "head_island",
+          "islands": 9
+        }
+      }
+    }
+  },
+  "plain": {
+    "gt": {
+      "waist": true,
+      "z_lo": 0.8335,
+      "z_hi": 0.849,
+      "z_mid": 0.84125,
+      "area": 0.0038325,
+      "prominence": 4.8093150684931505,
+      "width": 0.015499999999999958,
+      "H": 1.0125442743301392,
+      "z_floor": 0.0,
+      "reason": ""
+    },
+    "detectors": {
+      "A_width_current": {
+        "bucket": "good",
+        "err": 0.0,
+        "note": "",
+        "answer": 0.8421,
+        "raw": {
+          "neck_z": 0.8421,
+          "metric": 0.139,
+          "window_edge": false,
+          "confidence": 0.7,
+          "low_confidence": false,
+          "method": "width_argmin"
+        }
+      },
+      "B_area_min": {
+        "bucket": "good",
+        "err": 0.0,
+        "note": "",
+        "answer": 0.8421,
+        "raw": {
+          "neck_z": 0.8421,
+          "metric": 0.0038,
+          "window_edge": false,
+          "confidence": 0.7,
+          "low_confidence": false,
+          "method": "area_argmin"
+        }
+      },
+      "C_area_prominence": {
+        "bucket": "good",
+        "err": 0.0,
+        "note": "",
+        "answer": 0.8421,
+        "raw": {
+          "neck_z": 0.8421,
+          "neck_base_z": 0.8353,
+          "neck_join_z": 0.8522,
+          "prominence": 5.3333,
+          "plateau": 0.0068,
+          "confidence": 0.9333,
+          "low_confidence": false,
+          "method": "area_prominence"
+        }
+      },
+      "E_head_island": {
+        "bucket": "good",
+        "err": 0.0,
+        "note": "",
+        "answer": 0.8421,
+        "raw": {
+          "neck_z": 0.8421,
+          "neck_base_z": 0.8353,
+          "neck_join_z": 0.8488,
+          "prominence": 6.481,
+          "plateau": 0.0068,
+          "confidence": 0.56,
+          "low_confidence": false,
+          "method": "head_island",
+          "islands": 7
+        }
+      }
+    }
+  },
+  "shoulder_prop": {
+    "gt": {
+      "waist": true,
+      "z_lo": 0.8455,
+      "z_hi": 0.849,
+      "z_mid": 0.8472500000000001,
+      "area": 0.0038328,
+      "prominence": 4.808938634940513,
+      "width": 0.0034999999999999476,
+      "H": 1.0125442743301392,
+      "z_floor": 0.0,
+      "reason": ""
+    },
+    "detectors": {
+      "A_width_current": {
+        "bucket": "good",
+        "err": 0.0,
+        "note": "",
+        "answer": 0.8488,
+        "raw": {
+          "neck_z": 0.8488,
+          "metric": 0.14,
+          "window_edge": false,
+          "confidence": 0.7,
+          "low_confidence": false,
+          "method": "width_argmin"
+        }
+      },
+      "B_area_min": {
+        "bucket": "good",
+        "err": 0.0032,
+        "note": "",
+        "answer": 0.8522,
+        "raw": {
+          "neck_z": 0.8522,
+          "metric": 0.0059,
+          "window_edge": false,
+          "confidence": 0.7,
+          "low_confidence": false,
+          "method": "area_argmin"
+        }
+      },
+      "C_area_prominence": {
+        "bucket": "good",
+        "err": 0.0032,
+        "note": "",
+        "answer": 0.8522,
+        "raw": {
+          "neck_z": 0.8522,
+          "neck_base_z": 0.8353,
+          "neck_join_z": 0.8624,
+          "prominence": 3.4209,
+          "plateau": 0.0,
+          "confidence": 1.0,
+          "low_confidence": false,
+          "method": "area_prominence"
+        }
+      },
+      "E_head_island": {
+        "bucket": "good",
+        "err": 0.0034,
+        "note": "",
+        "answer": 0.8421,
+        "raw": {
+          "neck_z": 0.8421,
+          "neck_base_z": 0.8353,
+          "neck_join_z": 0.8488,
+          "prominence": 6.5362,
+          "plateau": 0.0068,
+          "confidence": 0.56,
+          "low_confidence": false,
+          "method": "head_island",
+          "islands": 8
+        }
+      }
+    }
+  },
+  "thick_neck": {
+    "gt": {
+      "waist": true,
+      "z_lo": 0.875,
+      "z_hi": 0.878,
+      "z_mid": 0.8765000000000001,
+      "area": 0.0121959,
+      "prominence": 1.511302978869948,
+      "width": 0.0030000000000000027,
+      "H": 1.0125442743301392,
+      "z_floor": 0.0,
+      "reason": ""
+    },
+    "detectors": {
+      "A_width_current": {
+        "bucket": "good",
+        "err": 0.0,
+        "note": "",
+        "answer": 0.8759,
+        "raw": {
+          "neck_z": 0.8759,
+          "metric": 0.2566,
+          "window_edge": false,
+          "confidence": 0.7,
+          "low_confidence": false,
+          "method": "width_argmin"
+        }
+      },
+      "B_area_min": {
+        "bucket": "good",
+        "err": 0.0012,
+        "note": "",
+        "answer": 0.8792,
+        "raw": {
+          "neck_z": 0.8792,
+          "metric": 0.0136,
+          "window_edge": false,
+          "confidence": 0.7,
+          "low_confidence": false,
+          "method": "area_argmin"
+        }
+      },
+      "C_area_prominence": {
+        "bucket": "ok",
+        "err": 0.0012,
+        "note": "low confidence",
+        "answer": 0.8792,
+        "raw": {
+          "neck_z": 0.8792,
+          "neck_base_z": 0.8218,
+          "neck_join_z": 0.9906,
+          "prominence": 1.4855,
+          "plateau": 0.0,
+          "confidence": 0.2097,
+          "low_confidence": true,
+          "method": "area_prominence"
+        }
+      },
+      "E_head_island": {
+        "bucket": "bad",
+        "err": 0.0987,
+        "note": "",
+        "answer": 0.7763,
+        "raw": {
+          "neck_z": 0.7763,
+          "neck_base_z": 0.7746,
+          "neck_join_z": 0.778,
+          "prominence": 2.9315,
+          "plateau": 0.0034,
+          "confidence": 0.58,
+          "low_confidence": false,
+          "method": "head_island",
+          "islands": 8
+        }
+      }
+    }
+  }
+}
