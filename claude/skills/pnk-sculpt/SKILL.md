@@ -136,6 +136,36 @@ the silhouette; `mesh.py ortho` plus `sheet.py --grid` converts a pixel to an
 exact world coordinate; `assemble.py findeyes` locates eye sockets from the
 geometry. Use them.
 
+## Build the measured test before trusting what you see
+
+This pipeline is unusually good at looking correct while being wrong, and the
+failures below all survived careful review and died to a measurement. They are
+listed because the pattern repeats, not to be exhaustive.
+
+- A render judged "good" had a shattered scalp. The mesh reported watertight,
+  single-shell, and a better dihedral spread than the version before it, because
+  a field of small fragments is closed and locally smooth.
+- An exact boolean turned 1,134,577 faces into 594 and still reported watertight
+  and single-shell. Nothing raised an error.
+- `hasattr(bpy.ops.wm, "threemf_export")` returns True for any name, because
+  `bpy.ops` resolves attributes lazily. A capability was reported as verified on
+  the strength of that check, and it did not exist. Probe operators with
+  `dir(bpy.ops.wm)` or by calling them.
+- A benchmark built to choose between methods had a hand-derived answer key that
+  was itself wrong; correcting it reversed the ranking. Derive ground truth by
+  measurement, or the benchmark measures itself.
+
+Three habits follow, and they are cheap:
+
+1. **Render clay, from more than one angle, after every destructive step.**
+   Texture and a single viewpoint both hide geometry faults.
+2. **Prefer a number you can check to a number you were given.** Health output
+   is a screen, not a proof: it is silent about shattering, about detail lost to
+   a remesh, and about an operation that did not happen.
+3. **When a claim matters and you cannot test it directly, have something
+   adversarial try to break it.** Every load-bearing conclusion in this
+   pipeline's history that went unchallenged turned out to need revision.
+
 ## Jumping in mid-pipeline
 
 Ask what the user actually has and start from the first stage that needs

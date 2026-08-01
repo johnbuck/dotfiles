@@ -268,6 +268,36 @@ The fuse voxel must be coarser than the finest part. If the body was cleaned at
 0.0012, fuse at 0.0014. Fusing at the same value or finer resamples the body's
 own facets and the result reads as noise across the whole surface.
 
+### Coarser smooths, but it also DESTROYS
+
+The rule above is only half of it, and the missing half cost a whole rebuild. A
+remesh cannot represent anything finer than its voxel, so detail below that size
+is not smoothed away, it is broken into fragments. On the plate knight the
+transferred head's hairline came through the transfer perfectly and came out of
+a 0.0022 fuse as shrapnel: an obvious ring of holes across the forehead. The
+mesh still reported watertight, single-shell, and a *better* dihedral spread
+than before, because a field of small fragments is closed and locally smooth.
+
+The numbers cannot catch this. Render the head before and after any fuse.
+
+### Do not remesh the whole figure to attach a primitive
+
+```bash
+$B $S/assemble.py -- fuse work/figure.blend work/based.blend \
+   --method boolean --height-mm 200
+```
+
+A base is a cylinder. Resampling every surface on the figure to attach one is
+both wasteful and destructive, and it is what shattered the hairline above. The
+boolean path only rewrites geometry near the seam, so the rest of the figure
+arrives untouched.
+
+Use `--method remesh` when merging genuinely organic parts, where the boolean
+solver is unreliable. Use `--method boolean` for a base, a peg or a plinth.
+Known cost: an exact union leaves a handful of non-manifold edges at the seam
+that `fill_holes` does not clear. That is an open problem, recorded in the
+homelab backlog under assembly hardening.
+
 Verify before going on:
 
 ```bash
@@ -276,6 +306,14 @@ python3 $S/sheet.py renders/fig_sheet.png renders/fig_{front,q45,side,back}.png
 ```
 
 ## Eyes
+
+**Precondition: run this on a mesh under about 700k faces.** The aperture is cut
+with an exact DIFFERENCE, and above roughly that size the solver stops editing
+the mesh and consumes it instead. Measured, reproducibly: a 1,134,577-face
+figure came back as 594 faces. `sculptlib.boolean` now catches that and restores
+the mesh, so the failure is loud rather than silent, but the operation still
+does not happen. Run `eyes` after the fuse, which brings the count down, or
+decimate a working copy first.
 
 Image-to-3D cannot produce open eyes. It carves a shallow slit where the lids
 meet and leaves the socket flat, so the face reads as asleep at any
