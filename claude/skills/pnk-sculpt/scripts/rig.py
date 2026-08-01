@@ -334,8 +334,22 @@ def cmd_metarig(a):
 
     if a.snap:
         snap_metarig(meta, lm, bend=a.bend)
-    strip_unfitted(meta, drop_face=not a.face,
-                   drop_fingers=not a.fingers)
+
+    # Stripping is right for a print and wrong for an asset, so it follows the
+    # branch rather than being a blanket default. A print is one frozen pose and
+    # has no use for a face rig; an animated asset does, and silently deleting
+    # it would leave someone wondering where their face bones went.
+    if a.branch == "print":
+        strip_unfitted(meta, drop_face=not a.face,
+                       drop_fingers=not a.fingers)
+    else:
+        print("asset branch: keeping the face and finger rigs.")
+        print("  Be aware they are NOT fitted to this mesh, and fitting them "
+              "would not be enough on its own. Facial deformation needs edge "
+              "loops around the eyes and mouth; a voxel remesh has uniform "
+              "triangles with no loops, so these bones will smear the face "
+              "however well they are placed. Retopologise the head first.")
+        print("  Pass --branch print to strip them instead.")
 
     save(a.output)
     print("\nNEXT: look at it before generating, with\n"
@@ -819,6 +833,9 @@ def main():
     m.add_argument("--snap", action="store_true", default=True,
                    help="move the main bone chain to measured heights")
     m.add_argument("--no-snap", dest="snap", action="store_false")
+    m.add_argument("--branch", choices=("print", "asset"), default="print",
+                   help="print bakes the pose into a solid and has no use for "
+                        "a face rig; asset keeps the armature")
     m.add_argument("--face", action="store_true",
                    help="keep Rigify's face rig; it is NOT fitted and will "
                         "tear the face apart under automatic weights")

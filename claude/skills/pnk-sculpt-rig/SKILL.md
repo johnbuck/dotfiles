@@ -27,25 +27,41 @@ re-close to a solid. Topology does not matter because nothing will deform it
 again. For a game asset the rig is the deliverable: face count matters, UVs and
 materials must survive, watertightness stops mattering entirely.
 
-## The face and finger rigs are stripped, and should stay stripped
+## The face and finger rigs, and why the branch decides
 
 Rigify's human metarig ships about 92 face bones and 38 finger bones. This
-pipeline fits the spine, arms and legs to the mesh but cannot fit those: there
-is no way to find a lip corner or a knuckle on a voxel-remeshed sculpt. They are
-only translated along with the head or hand they belong to.
+pipeline fits the spine, arms and legs from the mesh but cannot fit those:
+there is no way to find a lip corner or a knuckle on a voxel-remeshed sculpt.
+They are only translated along with the head or hand they belong to.
 
 That is harmless while they are just bones and destructive the moment automatic
 weights bind real geometry to them. On the first validated run an 18-degree
-spine twist was enough to tear the face apart: the forehead caved in, the brow
-smeared into strands, the eye sockets collapsed. Nothing was rotating those
-bones; simply having badly-placed bones own that geometry was sufficient.
+spine twist tore the face apart: forehead caved in, brow smeared into strands,
+eye sockets collapsed. Nothing was rotating those bones. Badly-placed bones
+owning that geometry was enough on its own.
 
-So `metarig` removes both sub-rigs by default and says so. `--face` and
-`--fingers` keep them, and if you use either, place those bones in the GUI
-before generating or you will get the same result.
+`--branch print` (the default) deletes both sub-rigs. That is not a workaround.
+A print is one frozen pose, there is no expression to animate, and Rigify ships
+a face rig because Rigify is built for animation, not because a figurine needs
+one.
 
-A print pose needs neither. Expression and finger articulation are for animated
-assets, and an animated asset should not be built on voxel topology anyway.
+`--branch asset` keeps them and warns, because silently deleting an animator's
+face bones would be worse than shipping them imperfect.
+
+### The limitation you should state plainly to whoever asked
+
+Keeping the face bones does not give you a working face rig, and neither would
+placing them perfectly. Facial deformation needs edge loops: concentric rings of
+quads around the eyes and mouth, so a lid bone's rotation follows the loop and
+the eye closes. A voxel remesh produces uniform triangles with no loops
+anywhere, so the deformation has nothing to follow and smears.
+
+**The bones were the visible cause; the topology is the real one.** A usable
+face rig needs the head retopologised to quad topology first, with the lost
+surface detail baked into a normal map. That is a different discipline from
+anything in this pipeline and is specified separately; see the retopology spec
+in the homelab backlog. Until it exists, the asset branch is honestly a
+body-deformation rig with a static face.
 
 ## Rig BEFORE the base is fused on
 
