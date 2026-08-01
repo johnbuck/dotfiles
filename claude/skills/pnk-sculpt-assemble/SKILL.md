@@ -92,7 +92,50 @@ individual measurement had looked fine.
 Before you call a held prop done, render it in place and ask whether someone who
 uses that object would recognise the grip.
 
-## Grafting a head
+## Giving the figure a detailed face
+
+The reason this stage exists. In a full-body reference the head is a few percent
+of the frame, so after the reconstructor downsamples its input the face has
+almost no pixels and comes out as a mask. A separate bust gives the face the
+whole frame, roughly a tenfold detail increase.
+
+There are two ways to get that detail onto the body, and the default is
+**transfer**, not graft.
+
+### transfer: reshape the body's own head (use this)
+
+```bash
+$B $S/assemble.py -- transfer work/body_prop.blend work/head_clean.blend \
+   work/figure.blend --head-radius 0.13 --height-mm 200
+```
+
+Nothing is cut. The body's head vertices are pulled onto the detailed head's
+surface, with influence ramping to zero before the shoulders. No vertex is
+added, removed or merged, so the mesh is exactly as watertight afterwards as
+before, and there is no seam because there is no join.
+
+Why this is the default: the graft path below produced a visible ledge across
+the jaw and a second chin underneath, on a real build. Both are structural, not
+tuning problems. Capping the body's neck stub and capping the donor and
+overlapping the two gives a voxel fuse two flat discs to reconcile, and it
+reconciles them into a step. Separately, the neck is found as the narrowest
+horizontal band, which on an armoured figure lands at the **jaw line** rather
+than the neck base, so the body's own chin survives below the cut.
+
+The honest limit: shrinkwrap moves vertices, it cannot invent them. Detail finer
+than the body head's vertex spacing will not appear, and a feature the body head
+lacks entirely will be stretched toward rather than reproduced. Clean the body at
+a voxel fine enough that its head carries a few thousand faces; `transfer`
+prints the count so you can check. Expect a slightly softer face than the donor,
+and let the `eyes` step below supply the eyes.
+
+### graft: cut the head off and replace it
+
+Still available, and correct when the head genuinely must be **replaced** rather
+than refined: a different helmet, a swapped head, a non-human head on a human
+body. Accept that you will be fixing the seam.
+
+### How graft works
 
 The reason this stage exists. In a full-body reference the head is a few percent
 of the frame, so after the reconstructor downsamples its input the face has

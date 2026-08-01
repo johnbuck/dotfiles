@@ -121,7 +121,8 @@ near 100:1 produced lace. `trellis.py diagnose` computes it and says so.
 separately, then assemble. In a full-body reference the head occupies a few
 percent of the frame, so after downsampling the face has almost no pixels and
 comes out as a blank mask. A separate bust portrait gives the face the whole
-frame. Long thin props are better built parametrically than reconstructed at
+frame, and stage 5 transfers that detail onto the body's own head rather than
+cutting and grafting, so there is no seam. Long thin props are better built parametrically than reconstructed at
 all. This is the single biggest quality lever in the pipeline.
 
 **Negative values need `--opt=value`.** `--at -0.35,0,0.07` fails: argparse

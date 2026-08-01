@@ -511,6 +511,128 @@ def cmd_eyes(a):
         sys.exit(2)
 
 
+# ---------------------------------------------------------------- transfer --
+
+def head_region(obj, f_lo, f_hi, radius):
+    """The neck band and everything that counts as head above it."""
+    neck, lo, hi, H = find_narrowest(obj, f_lo, f_hi)
+    z = neck[1]
+    cx, cy = band_centre(obj, z, H * 0.02)
+    pts = [v for v in world_verts(obj)
+           if v.z > z and ((v.x - cx) ** 2 + (v.y - cy) ** 2) < radius * radius]
+    if not pts:
+        raise SystemExit(f"no head found above z={z:.4f} within r={radius}")
+    zs = [v.z for v in pts]
+    return {
+        "neck_z": z, "cx": cx, "cy": cy, "H": H, "top": max(zs),
+        "height": max(zs) - z,
+        "cxx": (max(v.x for v in pts) + min(v.x for v in pts)) / 2,
+        "cyy": (max(v.y for v in pts) + min(v.y for v in pts)) / 2,
+        "width": max(v.x for v in pts) - min(v.x for v in pts),
+        "depth": max(v.y for v in pts) - min(v.y for v in pts),
+        "n": len(pts),
+    }
+
+
+def cmd_transfer(a):
+    """Reshape the body's OWN head onto a detailed one, without cutting.
+
+    Grafting a separately reconstructed head means cutting the body, capping the
+    stub, capping the donor, overlapping them and hoping a voxel remesh blends
+    the result. It does not: two flat caps fuse into a visible ledge across the
+    jaw, and if the neck band was detected at the jaw line rather than the neck
+    base, the body's original chin survives underneath and you get two chins.
+
+    Transferring avoids all of that by never cutting. The body's head vertices
+    are pulled onto the detailed head's surface, with the influence falling to
+    zero before the shoulders. Nothing is added, removed or merged, so the mesh
+    is exactly as watertight afterwards as it was before, and there is no seam
+    because there is no join.
+
+    The limit is real and worth stating: shrinkwrap moves vertices, it cannot
+    invent them. Detail finer than the body head's own vertex spacing will not
+    appear, and a protrusion the body head lacks entirely (a very different ear,
+    a horn) will be stretched toward rather than reproduced. Clean the body at a
+    fine enough voxel that its head carries a few thousand faces.
+    """
+    clear()
+    body = append_object(a.body, prefer="Figure", newname="Body")
+    check("body in", body, a.height_mm)
+    donor = append_object(a.head, prefer="Figure", newname="Donor")
+
+    b = head_region(body, a.neck_lo, a.neck_hi, a.head_radius)
+    d = head_region(donor, a.donor_neck_lo, a.donor_neck_hi, a.donor_radius)
+    print(f"body head: {b['n']} verts, height {b['height']:.4f}, "
+          f"width {b['width']:.4f}, neck z {b['neck_z']:.4f}")
+    print(f"donor head: {d['n']} verts, height {d['height']:.4f}, "
+          f"width {d['width']:.4f}")
+
+    # Match the donor to the body's own head box. Scaling on height alone skews
+    # a head that is proportioned differently, so take the mean of the height
+    # and width ratios and let --head-scale trim by eye.
+    s = ((b["height"] / d["height"]) + (b["width"] / d["width"])) / 2 * a.head_scale
+    donor.scale = (s, s, s)
+    donor.location = (b["cxx"] - d["cxx"] * s + a.offset[0],
+                      b["cyy"] - d["cyy"] * s + a.offset[1],
+                      b["neck_z"] - d["neck_z"] * s + a.offset[2])
+    if a.yaw:
+        donor.rotation_euler = (0, 0, math.radians(a.yaw))
+    select_only(donor)
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    print(f"donor scaled x{s:.4f} and aligned to the body's head")
+
+    # Weight the influence: full over the head, ramping to nothing by the neck,
+    # and zero anywhere outside the neck cylinder so pauldrons are untouched.
+    vg = body.vertex_groups.new(name="head_transfer")
+    z0 = b["neck_z"]
+    z1 = z0 + a.blend * b["height"]
+    r2 = a.head_radius * a.head_radius
+    moved = 0
+    for v in body.data.vertices:
+        p = body.matrix_world @ v.co
+        if ((p.x - b["cx"]) ** 2 + (p.y - b["cy"]) ** 2) > r2:
+            continue
+        if p.z <= z0:
+            continue
+        t = 1.0 if p.z >= z1 else (p.z - z0) / max(z1 - z0, 1e-9)
+        w = t * t * (3 - 2 * t)          # smoothstep, so the blend has no crease
+        vg.add([v.index], w, "REPLACE")
+        moved += 1
+    print(f"weighted {moved} body vertices, full influence above z={z1:.4f}")
+
+    m = body.modifiers.new("headfit", "SHRINKWRAP")
+    m.target = donor
+    m.wrap_method = a.method
+    m.vertex_group = vg.name
+    if a.method == "PROJECT":
+        m.use_negative_direction = True
+        m.use_positive_direction = True
+        m.subsurf_levels = 0
+    bpy.context.view_layer.objects.active = body
+    bpy.ops.object.modifier_apply(modifier=m.name)
+    bpy.data.objects.remove(donor, do_unlink=True)
+
+    if a.smooth:
+        sm = body.modifiers.new("blend", "SMOOTH")
+        sm.iterations = a.smooth
+        sm.factor = 0.5
+        sm.vertex_group = vg.name
+        bpy.context.view_layer.objects.active = body
+        bpy.ops.object.modifier_apply(modifier=sm.name)
+
+    h = check("after transfer", body, a.height_mm)
+    save(a.output)
+    if not is_watertight(h):
+        print("WARNING: transfer broke watertightness, which should be "
+              "impossible for a pure vertex move. The donor probably has holes; "
+              "analyze it on its own.")
+        sys.exit(2)
+    print("\nNo cut was made, so there is no seam to inspect. Do check the "
+          "profile from the side: if the head looks melted rather than "
+          "detailed, the body head has too few vertices to carry the donor's "
+          "form, and the body needs re-cleaning at a finer voxel.")
+
+
 # -------------------------------------------------------------------- main --
 
 def floats(s):
@@ -566,6 +688,28 @@ def main():
                     help="how far below the neck to keep, as a fraction of "
                          "body height, so the fuse has material to weld")
     s2.set_defaults(fn=cmd_graft)
+
+    st = common(sub.add_parser("transfer"))
+    st.add_argument("body")
+    st.add_argument("head")
+    st.add_argument("output")
+    st.add_argument("--head-scale", type=float, default=1.0)
+    st.add_argument("--head-radius", type=float, default=0.14,
+                    help="cylinder around the neck axis that counts as head")
+    st.add_argument("--donor-radius", type=float, default=0.30)
+    st.add_argument("--neck-lo", type=float, default=0.78)
+    st.add_argument("--neck-hi", type=float, default=0.92)
+    st.add_argument("--donor-neck-lo", type=float, default=0.25)
+    st.add_argument("--donor-neck-hi", type=float, default=0.75)
+    st.add_argument("--blend", type=float, default=0.35,
+                    help="fraction of head height over which influence ramps up")
+    st.add_argument("--method", default="NEAREST_SURFACEPOINT",
+                    choices=("NEAREST_SURFACEPOINT", "PROJECT",
+                             "NEAREST_VERTEX"))
+    st.add_argument("--smooth", type=int, default=1)
+    st.add_argument("--offset", type=floats, default=(0, 0, 0))
+    st.add_argument("--yaw", type=float, default=0.0)
+    st.set_defaults(fn=cmd_transfer)
 
     s3 = common(sub.add_parser("base"))
     s3.add_argument("input")
