@@ -455,26 +455,93 @@ def slice_profile(obj, nbands=90):
     return out, lo, hi, H
 
 
-def find_narrowest(obj, f_lo, f_hi):
-    """Narrowest horizontal band between two height fractions.
+def median_edge(obj, sample=4000):
+    """Typical edge length in WORLD units: the finest detail this mesh holds."""
+    import random
+    es, vs = obj.data.edges, obj.data.vertices
+    if not len(es):
+        return 0.0
+    mw = obj.matrix_world
+    rnd = random.Random(0)
+    idx = range(len(es)) if len(es) <= sample else rnd.sample(range(len(es)),
+                                                              sample)
+    ds = sorted(((mw @ vs[es[i].vertices[0]].co)
+                 - (mw @ vs[es[i].vertices[1]].co)).length for i in idx)
+    return ds[len(ds) // 2]
 
-    (sum_of_widths, z, x_width, y_width, height_fraction), plus the bbox.
+
+def find_neck(obj, f_lo, f_hi, nbands=None):
+    """Narrowest horizontal band between two height fractions, by SECTION AREA.
+
+    Returns (metric, z, x_width, y_width, height_fraction), plus the bbox, so
+    it is a drop-in for the width-based version it replaces.
+
+    Why area rather than bounding-box width, which is what this used to do:
+
+    - Width is an outlier statistic. One braid, one ear, one collar spike sets
+      the whole band, which is how this landed on an armoured figure's JAW at
+      89% of height and left the original chin attached after a head cut.
+    - Width is not rotation-invariant. A 0.24 x 0.12 shoulder slab scores 0.36
+      at yaw 0 and 0.51 at yaw 45 while a circular neck scores the same at both,
+      so the answer changed with the figure's arbitrary yaw. Measured across
+      yaw on synthetic figures: width spread up to 0.135 of body height, area
+      spread at most 0.024.
+
+    Chosen on aggregate reliability over 18 sampling and yaw conditions x 13
+    synthetic figures: 6 bad answers in 234 gradings, never more than one in any
+    single condition, and never bad on 12 of 13 figures. That is a stronger
+    claim than the benchmark's headline ranking, which was invalidated three
+    times; see the homelab backlog spec for what the benchmark still cannot
+    decide.
+
+    The band count is capped at the mesh's own sampling limit. Bands thinner
+    than the vertex spacing under-sample the section ring, and a band that
+    survives on a handful of stray vertices reads narrower than its properly
+    sampled neighbours: that artefact alone flipped the benchmark's ranking.
     """
-    prof, lo, hi, H = slice_profile(obj)
+    vs = world_verts(obj)
+    lo, hi = min(v.z for v in vs), max(v.z for v in vs)
+    H = hi - lo
+    e = median_edge(obj)
+    limit = int(H / e) if e > 0 else 200
+    n = min(nbands or 200, max(40, limit))
+
+    cell = (e * 1.6) if e > 0 else (H / 100.0)
+    x0, y0 = min(v.x for v in vs), min(v.y for v in vs)
+    bands = [[] for _ in range(n)]
+    for v in vs:
+        bands[min(n - 1, int((v.z - lo) / H * n))].append(v)
+    floor = max(6, int(len(vs) * 0.0006))
+
     best = None
-    for p in prof:
-        if not p:
+    for i, g in enumerate(bands):
+        if len(g) < floor:
             continue
-        z, xw, yw, _ = p
+        z = lo + (i + 0.5) * H / n
         f = (z - lo) / H
         if not (f_lo <= f <= f_hi):
             continue
-        s = xw + yw
-        if best is None or s < best[0]:
-            best = (s, z, xw, yw, f)
+        # Per-row hull of the slice outline: a cheap stand-in for the enclosed
+        # area. It over-reads where a slice has disjoint pieces, but the bias is
+        # roughly constant across neighbouring bands, so the ARGMIN survives it.
+        rows = {}
+        for v in g:
+            r, c = int((v.y - y0) / cell), int((v.x - x0) / cell)
+            lohi = rows.get(r)
+            rows[r] = (c, c) if lohi is None else (min(lohi[0], c),
+                                                   max(lohi[1], c))
+        area = sum(hc - lc + 1 for lc, hc in rows.values()) * cell * cell
+        if best is None or area < best[0]:
+            best = (area, z,
+                    max(v.x for v in g) - min(v.x for v in g),
+                    max(v.y for v in g) - min(v.y for v in g), f)
     if best is None:
         raise SystemExit(f"no populated band between {f_lo} and {f_hi}")
     return best, lo, hi, H
+
+
+# The old name, kept so nothing breaks; it is no longer width-based.
+find_narrowest = find_neck
 
 
 def band_centre(obj, z, tol, r=0.055, iters=6):
