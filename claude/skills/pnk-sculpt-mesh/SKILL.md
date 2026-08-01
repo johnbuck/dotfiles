@@ -109,7 +109,7 @@ tells you which.
 
 ```bash
 $B $S/mesh.py -- reshape work/body_clean.blend work/body_prop.blend \
-   --legs 1.22 --narrow 0.95 --ankle -0.44 --hip -0.03 --height-mm 200
+   --legs 1.22 --narrow 0.95 --ankle -0.44 --hip -0.03 --renorm --height-mm 200
 ```
 
 Get `--ankle` and `--hip` from the width profile: the ankle is above the boot
@@ -120,8 +120,19 @@ and the mesh stays exactly as watertight as it started. Feet below the ankle are
 untouched, or they become clown shoes; everything above the hip is translated
 rigidly so the torso is not distorted.
 
+Stretching the legs alone makes a figure taller but no slimmer, which is why
+`--narrow` exists: "short and wide" is two complaints. On one build 1.22 / 0.95
+took a figure from 7.3 heads to about 8 with a 51.4% leg fraction.
+
+`--renorm` scales the result back to the height it started at. Use it. Without
+it the figure grows by the amount the legs gained (18 mm in that example) and
+every millimetre constant downstream, base radius, socket radius, prop length,
+is silently applied at the wrong scale.
+
 Do this **before** grafting a head or cutting sockets. Every coordinate measured
-beforehand moves, so re-run `landmarks` afterwards.
+beforehand moves: the grip, the neck, the eye line, and the head-cut radius,
+which shrinks with the narrowing and will eat the quiver if you leave it. Re-run
+`landmarks` afterwards and believe it over anything you wrote down earlier.
 
 ## Checking thickness early
 

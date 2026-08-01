@@ -217,19 +217,42 @@ def cmd_reshape(a):
           f"-> adds {lift:.4f}", flush=True)
     print(f"narrow x by {a.narrow}, y by {a.narrow_y}", flush=True)
 
+    # foreach_get/foreach_set with numpy, NOT a per-vertex loop. Iterating a
+    # couple of million vertices through RNA one at a time takes longer than the
+    # entire rest of the pipeline and will hit a command timeout.
+    import numpy as np
     me = obj.data
-    for v in me.vertices:
-        z = v.co.z
-        if z <= a.ankle:
-            nz = z
-        elif z >= a.hip:
-            nz = z + lift
-        else:
-            nz = a.ankle + (z - a.ankle) * a.legs
-        v.co.z = nz
-        v.co.x = a.axis + (v.co.x - a.axis) * a.narrow
-        v.co.y = v.co.y * a.narrow_y
+    n = len(me.vertices)
+    co = np.empty(n * 3, dtype=np.float32)
+    me.vertices.foreach_get("co", co)
+    co = co.reshape(n, 3)
+
+    z = co[:, 2]
+    above = z >= a.hip
+    mid = (z > a.ankle) & ~above
+    nz = z.copy()
+    nz[above] = z[above] + lift
+    nz[mid] = a.ankle + (z[mid] - a.ankle) * a.legs
+    co[:, 2] = nz
+    co[:, 0] = a.axis + (co[:, 0] - a.axis) * a.narrow
+    co[:, 1] = co[:, 1] * a.narrow_y
+
+    if a.renorm:
+        # Scale back to the height we started at, so every downstream constant
+        # expressed in millimetres still works. Uniform scaling preserves the
+        # proportions this command just fixed; it only changes overall size.
+        span = float(co[:, 2].max() - co[:, 2].min())
+        k = h0["dims"][2] / span
+        co *= k
+        print(f"renormalizing height {span:.4f} -> {h0['dims'][2]:.4f} (x{k:.4f})",
+              flush=True)
+
+    me.vertices.foreach_set("co", co.ravel())
     me.update()
+    # obj.dimensions reads a cached bounding box until the depsgraph runs, so
+    # without this the "after" report prints the pre-reshape numbers.
+    obj.data.update_tag()
+    bpy.context.view_layer.update()
 
     h1 = check("after", obj, a.height_mm)
     print(f"height {h0['dims'][2]:.4f} -> {h1['dims'][2]:.4f}")
@@ -425,6 +448,9 @@ def main():
     a5.add_argument("--hip", type=float, required=True,
                     help="z where the leg meets the pelvis (from landmarks)")
     a5.add_argument("--axis", type=float, default=0.0)
+    a5.add_argument("--renorm", action="store_true",
+                    help="scale back to the starting height afterwards, so mm "
+                         "constants downstream still hold. Usually what you want.")
     a5.set_defaults(fn=cmd_reshape)
 
     a6 = common(sub.add_parser("render"))

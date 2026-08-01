@@ -431,12 +431,30 @@ def find_narrowest(obj, f_lo, f_hi):
     return best, lo, hi, H
 
 
-def band_centre(obj, z, tol):
+def band_centre(obj, z, tol, r=0.055, iters=6):
+    """Centre of the body at height z, by mean-shift rather than bounding box.
+
+    The bounding-box midpoint of a horizontal band is pulled sideways by
+    anything else crossing that height: a braid on one side, quiver arrows on
+    the other. On one figure that moved the neck centre 29 mm off axis, and the
+    head-removal cylinder centred on it then ate the arrows.
+
+    Starting from the median and mean-shifting into the densest nearby cluster
+    locks onto the neck itself and is stable against both.
+    """
     g = [v for v in world_verts(obj) if abs(v.z - z) < tol]
     if not g:
         return 0.0, 0.0
-    return ((max(v.x for v in g) + min(v.x for v in g)) * 0.5,
-            (max(v.y for v in g) + min(v.y for v in g)) * 0.5)
+    xs = sorted(v.x for v in g)
+    ys = sorted(v.y for v in g)
+    cx, cy = xs[len(xs) // 2], ys[len(ys) // 2]
+    for _ in range(iters):
+        near = [v for v in g if (v.x - cx) ** 2 + (v.y - cy) ** 2 < r * r]
+        if not near:
+            break
+        cx = sum(v.x for v in near) / len(near)
+        cy = sum(v.y for v in near) / len(near)
+    return cx, cy
 
 
 def bvh_for(obj):

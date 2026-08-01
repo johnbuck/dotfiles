@@ -67,6 +67,19 @@ $B $S/prop.py -- peg work/bow.blend work/bow_peg.blend \
    --at 0,0,0 --radius-mm 3.9 --length-mm 12 --clearance-mm 0.2
 ```
 
+### Check the prop is the right way round
+
+Numbers can all be correct and the result still be obviously wrong to anyone who
+has handled the real object. On a strung bow the **string is the part nearest the
+archer** and the stave curves away from her, so the limb offset has to stay at or
+below the string offset along essentially the whole length. One build had the
+limbs bulging 4.5 mm *past* the string toward the body, which made the stave the
+inner element and the string the outer one: a bow held backwards. Every
+individual measurement had looked fine.
+
+Before you call a held prop done, render it in place and ask whether someone who
+uses that object would recognise the grip.
+
 ## Grafting a head
 
 The reason this stage exists. In a full-body reference the head is a few percent
@@ -122,10 +135,15 @@ python3 $S/sheet.py renders/fig_sheet.png renders/fig_{front,q45,side,back}.png
 
 Image-to-3D cannot produce open eyes. It carves a shallow slit where the lids
 meet and leaves the socket flat, so the face reads as asleep at any
-magnification. No resolution setting changes this. Miniature sculptors solve it
-by setting a sphere in the socket, and so do we: it buys a rounded eyeball with
-real volume, and paint supplies the iris. It does not buy a wide alert gaze; be
-straight with the user about that.
+magnification. No resolution setting changes this.
+
+Setting a sphere in the socket is **not** enough on its own. It buys volume but
+the face still reads heavy-lidded, because nothing defines where the lid ends and
+the eye begins. Do it in two steps, the way a sculptor would:
+
+1. **Carve an almond hollow** into the socket. The rim of that hollow is what
+   reads as the eyelid, and it is what makes the eye look open.
+2. **Set a sphere behind it** as the eyeball. Paint supplies the iris.
 
 Find the sockets from the geometry:
 
@@ -153,18 +171,33 @@ Then place them:
 
 ```bash
 $B $S/assemble.py -- eyes work/figure.blend work/figure_eyes.blend \
-   --at-z 0.4200 --centre-x 0.0 --dx 0.0264 --radius-mm 1.5 \
-   --protrude-mm 0.35 --refuse-voxel 0.0014 --height-mm 200
+   --at-z 0.4694 --centre-x 0.0085 --dx 0.0205 \
+   --aperture-w-mm 2.0 --aperture-h-mm 1.05 --aperture-d-mm 1.2 \
+   --radius-mm 1.55 --set-mm 1.9 --refuse-voxel 0.0014 --height-mm 200
 ```
 
-Both eyes take one depth. Hair hanging over one side of the face contaminates
-that side's samples, and asymmetric eyes read as a deformity, so the socket whose
-probe samples agree more tightly wins and sets the depth for both. The script
-prints both spreads so you can see which it chose and why.
+Four things decide whether this reads as an eye or as a deformity:
 
-`--refuse-voxel` should be the figure's fuse voxel. The boolean leaves a few
-non-manifold edges where sphere meets lid; re-remeshing at the same value
-recloses the solid without changing its effective resolution.
+- **The eyeball must be TALLER than the aperture**, so keep `--radius-mm` above
+  `--aperture-h-mm`. That is what lids are: the opening shows only a band of the
+  eyeball. If the aperture is taller, no rim shows and the eye is not open.
+- **`--set-mm` is positive.** The figure faces -Y, so smaller y is further
+  forward, and this is how far *behind* the surface the eyeball centre sits. A
+  negative value pushes the eyeball out through the face as a dome on the brow.
+- **Probe tight.** `--probe-spread` defaults to 0.0015 for a reason: sampling
+  wider catches the brow ridge and nose, which sit forward of the lids, so the
+  eyeball is placed against a surface that is too far forward and bulges.
+- **Each socket keeps its own depth, clamped** by `--max-diverge`. Forcing one
+  depth on both sinks the shallower eye into a pit, because a reconstructed face
+  is genuinely a little asymmetric. Letting them float free lets hair skew one.
+
+Expect to iterate on `--at-z` and `--dx` against an ortho render. Being 0.8 mm
+high puts the eyes on the brow.
+
+`--refuse-voxel` should be the figure's fuse voxel. The spheres are **joined,
+not boolean-unioned**: a UNION against a mesh that has just been cut collapsed a
+1,432,069-face figure to 1,575 faces. The remesh fuses them and recloses the
+solid without changing its effective resolution.
 
 ## Verification discipline
 

@@ -323,18 +323,34 @@ def cmd_findeyes(a):
 
 
 def cmd_eyes(a):
-    """Put actual eyeball spheres in the sockets.
+    """Give the figure OPEN eyes: carve an aperture, then set an eyeball in it.
 
     Image-to-3D reliably fails to produce open eyes. It carves a shallow slit
     where the lids meet and leaves the socket flat, so the face reads as asleep
-    at any magnification. Miniature sculptors solve this the same way: set a
-    sphere in the socket so the eye reads as a rounded open eyeball, and let
-    paint supply the iris.
+    at any magnification.
 
-    Depth is probed rather than assumed, and both eyes share one depth. Hair
-    hanging over one side of the face contaminates that side's samples, and
-    asymmetric eyes read as a deformity, so the socket whose samples agree more
-    tightly wins and sets the depth for both.
+    A sphere alone is not the fix. It buys volume but the face still reads
+    heavy-lidded, because nothing defines where the lid ends and the eye
+    begins. So this runs in two steps, the way a sculptor would:
+
+      1. Carve an almond hollow into the socket. THE RIM OF THAT HOLLOW is what
+         reads as the eyelid, and it is what makes the eye look open.
+      2. Set a sphere behind it as the eyeball.
+
+    Four things that make it work rather than look like a deformity:
+
+    * Probe with a TIGHT grid. Sampling wide pulls in the brow ridge and nose,
+      which sit forward of the lids, so the eyeball gets placed relative to a
+      surface that is too far forward and bulges out of the face.
+    * The eyeball must be TALLER than the aperture. That is what lids are: the
+      opening shows only a band of the eyeball. An aperture taller than the
+      eyeball shows no rim and does not read as open.
+    * Sign convention. The figure faces -Y, so SMALLER y is further forward.
+      `--set-mm` is how far BEHIND the surface the eyeball centre sits and must
+      be positive; negative pushes it out through the face as a dome on the brow.
+    * Use each socket's own depth, CLAMPED. Forcing one depth on both sinks the
+      shallower eye into a pit, because a reconstructed face is genuinely a
+      little asymmetric. Letting them float free lets hair skew one.
     """
     obj = open_figure(a.input)
     mm = mm_per_unit(obj, a.height_mm)
@@ -353,24 +369,53 @@ def cmd_eyes(a):
     if not probe:
         raise SystemExit("no surface found at either eye position; re-check "
                          "--at-z and --centre-x with findeyes or ortho")
-    best = min(probe, key=lambda k: probe[k][1])
-    surf_y = probe[best][0]
-    print(f"  using the {best} socket depth for both eyes: y={surf_y:.4f}")
+    if len(probe) == 2:
+        ly, ry = probe["L"][0], probe["R"][0]
+        mid = (ly + ry) / 2.0
+        half = a.max_diverge / 2.0
+        depth = {"L": min(max(ly, mid - half), mid + half),
+                 "R": min(max(ry, mid - half), mid + half)}
+    else:
+        only = next(iter(probe))
+        depth = {"L": probe[only][0], "R": probe[only][0]}
+    print(f"  eye depths L={depth['L']:.4f} R={depth['R']:.4f}")
 
-    spheres = []
+    # 1. carve the apertures. DIFFERENCE against a clean mesh is reliable.
     for side, dx in (("L", -a.dx), ("R", +a.dx)):
-        cy = surf_y + R - a.protrude_mm * mm
+        sy = depth[side]
+        bpy.ops.mesh.primitive_uv_sphere_add(
+            segments=48, ring_count=32, radius=1.0,
+            location=(a.centre_x + dx, sy + a.aperture_d_mm * mm * 0.35, a.at_z))
+        c = bpy.context.view_layer.objects.active
+        c.scale = (a.aperture_w_mm * mm, a.aperture_d_mm * mm, a.aperture_h_mm * mm)
+        bpy.context.view_layer.objects.active = c
+        bpy.ops.object.select_all(action="DESELECT")
+        c.select_set(True)
+        bpy.ops.object.transform_apply(scale=True)
+        boolean(obj, c, "DIFFERENCE")
+    check("apertures carved", obj, a.height_mm)
+
+    # 2. set the eyeballs. JOIN, do not boolean-union: a UNION against a mesh
+    # that has just been cut collapsed a 1,432,069-face figure to 1,575. The
+    # remesh below fuses them, the same trick the head graft uses.
+    balls = []
+    for side, dx in (("L", -a.dx), ("R", +a.dx)):
+        sy = depth[side]
         bpy.ops.mesh.primitive_uv_sphere_add(
             segments=48, ring_count=32, radius=R,
-            location=(a.centre_x + dx, cy, a.at_z))
+            location=(a.centre_x + dx, sy + a.set_mm * mm, a.at_z))
         s = bpy.context.view_layer.objects.active
         s.name = f"Eye{side}"
-        spheres.append(s)
-
-    for s in spheres:
-        boolean(obj, s, "UNION")
-    weld(obj)
-    check("after eye booleans", obj, a.height_mm)
+        balls.append(s)
+    bpy.ops.object.select_all(action="DESELECT")
+    for s in balls:
+        s.select_set(True)
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.join()
+    obj = bpy.context.view_layer.objects.active
+    obj.name = "Figure"
+    check("eyeballs joined", obj, a.height_mm)
 
     # The boolean leaves a few non-manifold edges where sphere meets lid.
     # Re-remeshing at the SAME voxel the figure was fused at restores a closed
@@ -467,9 +512,21 @@ def main():
     s6.add_argument("--centre-x", type=float, default=0.0)
     s6.add_argument("--dx", type=float, required=True,
                     help="half the interocular distance")
-    s6.add_argument("--radius-mm", type=float, default=1.5)
-    s6.add_argument("--protrude-mm", type=float, default=0.35)
-    s6.add_argument("--probe-spread", type=float, default=0.004)
+    s6.add_argument("--radius-mm", type=float, default=1.55,
+                    help="eyeball radius; must exceed --aperture-h-mm")
+    s6.add_argument("--aperture-w-mm", type=float, default=2.0,
+                    help="half-width of the carved eye opening")
+    s6.add_argument("--aperture-h-mm", type=float, default=1.05,
+                    help="half-height; keep BELOW --radius-mm or no lid rim shows")
+    s6.add_argument("--aperture-d-mm", type=float, default=1.2,
+                    help="how deep the opening cuts into the face")
+    s6.add_argument("--set-mm", type=float, default=1.9,
+                    help="how far BEHIND the surface the eyeball centre sits; "
+                         "positive, or the eyeball bulges out of the face")
+    s6.add_argument("--max-diverge", type=float, default=0.004,
+                    help="cap on how far the two sockets' depths may differ")
+    s6.add_argument("--probe-spread", type=float, default=0.0015,
+                    help="tight: wide sampling catches the brow and nose")
     s6.add_argument("--refuse-voxel", type=float, default=0.0,
                     help="re-remesh at the figure's fuse voxel to reclose it")
     s6.set_defaults(fn=cmd_eyes)
