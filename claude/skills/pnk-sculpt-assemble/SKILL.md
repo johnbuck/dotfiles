@@ -218,6 +218,30 @@ $B $S/assemble.py -- graft work/body_socket.blend work/head_clean.blend \
 so the value is used directly. Dividing it by the scale is a bug that produces a
 head remeshed far too fine, which reads as noise after the fuse.
 
+### Shrinkwrap detail transfer is not an alternative
+
+Worth knowing before you spend a session on it. Deforming the body's own head onto
+the high-detail bust looks like it should avoid every cutting failure above, and
+it does: all attempts stay watertight with the face count unchanged, because
+moving vertices cannot break topology. The quality fails instead.
+
+| Attempt | Result |
+|---|---|
+| Whole head, nearest-surface | head collapsed into folded facets |
+| Whole head, normal projection, 2.4 mm limit | face smoother, hair and ears shredded |
+| Face only, nose-aligned, 1.6 mm limit | real detail, hard tear seams at the patch edge |
+
+Shrinkwrap projects each vertex independently and has no notion of
+**correspondence**: nothing says a vertex is the corner of the mouth on both
+meshes. Where the silhouettes disagree, vertices land on unrelated geometry; at
+the edge of a weighted region, neighbours move different distances and the
+surface tears. Narrowing the region moves the tears, it does not remove them.
+
+The real obstacle, for grafting and for this, is that the two meshes share no
+topology. The ways out are a head model with known topology fitted to the
+portrait, which is also the only route to genuinely open eyes, or accepting the
+reconstruction's face.
+
 ### Cap every cut, and gate on watertight
 
 Deleting faces leaves an open shell. A voxel remesh builds a signed distance

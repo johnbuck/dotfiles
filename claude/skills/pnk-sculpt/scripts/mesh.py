@@ -382,7 +382,11 @@ def cmd_ortho(a):
     # Light energy is tuned to the ortho frame, not the whole figure. Framing a
     # 30 mm face with lights sized for a 200 mm body blows the render out and
     # hides the very feature you are trying to locate.
-    e = a.scale * a.scale * 470
+    # Irradiance is scale-invariant here (energy grows as scale^2 while the
+    # lights move out linearly), so this coefficient sets absolute exposure. It
+    # was high enough to wash a pale clay face to flat white, which defeats the
+    # entire purpose: an unreadable measurement image is worse than none.
+    e = a.scale * a.scale * 170 * a.exposure
     for off, k in (((-0.25, -0.5, 0.25), 1.0), ((0.3, -0.45, 0.05), 0.5),
                    ((0.0, -0.5, -0.25), 0.25)):
         ld = bpy.data.lights.new("L", "AREA")
@@ -505,6 +509,8 @@ def main():
     a8.add_argument("--scale", type=float, required=True,
                     help="frame width in Blender units")
     a8.add_argument("--res", type=int, default=1000)
+    a8.add_argument("--exposure", type=float, default=1.0,
+                    help="multiply light energy; lower for a pale subject")
     a8.add_argument("--outdir", default=None)
     a8.set_defaults(fn=cmd_ortho)
 

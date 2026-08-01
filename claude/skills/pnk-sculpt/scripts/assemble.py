@@ -37,7 +37,7 @@ from mathutils import Vector
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sculptlib import (  # noqa: E402
-    add_modifier_apply, append_object, argv, band_centre, boolean, bvh_for,
+    BooleanCollapse, add_modifier_apply, append_object, argv, band_centre, boolean, bvh_for,
     check, clear, fill_holes, find_narrowest, health, is_watertight,
     keep_largest_component, load_one, mm_per_unit, probe_surface, save,
     select_only, voxel_remesh, weld, world_verts,
@@ -304,6 +304,37 @@ def cmd_fuse(a):
         raise SystemExit("nothing to fuse")
     print(f"fusing {len(objs)} parts: {[o.name for o in objs]}")
 
+    if a.method == "boolean":
+        # A base or a peg is a clean primitive, and exact booleans are reliable
+        # against those. Remeshing the WHOLE figure to attach one cylinder is
+        # both wasteful and destructive: it resamples every surface, and any
+        # feature thinner than the voxel is broken into fragments. That is how a
+        # transferred head's hair ridges came back shattered while the mesh
+        # still reported itself watertight and single-shell.
+        base_obj = min(objs, key=lambda o: len(o.data.polygons))
+        fig = max(objs, key=lambda o: len(o.data.polygons))
+        print(f">> boolean union: {fig.name} + {base_obj.name}", flush=True)
+        try:
+            boolean(fig, base_obj, "UNION")
+        except BooleanCollapse as e:
+            raise SystemExit(f"{e}\nRe-run with --method remesh.")
+        weld(fig)
+        # An exact union leaves a handful of non-manifold edges where the two
+        # surfaces meet. That is a local repair, unlike a collapse, so fix it
+        # rather than falling back to a remesh that would cost the whole surface.
+        h = health(fig)
+        if not is_watertight(h):
+            print(f"   seam left nm={h['non_manifold_edges']} "
+                  f"bnd={h['boundary_edges']}; repairing", flush=True)
+            fill_holes(fig)
+            weld(fig)
+        fig.name = "Figure"
+        h = check("FUSED", fig, a.height_mm)
+        save(a.output)
+        if not is_watertight(h):
+            sys.exit(2)
+        return
+
     bpy.ops.object.select_all(action="DESELECT")
     for o in objs:
         o.select_set(True)
@@ -311,7 +342,6 @@ def cmd_fuse(a):
     bpy.ops.object.join()
     fig = bpy.context.view_layer.objects.active
     fig.name = "Figure"
-
     print(f">> fuse remesh at {a.voxel}", flush=True)
     voxel_remesh(fig, a.voxel)
     fig, dropped = keep_largest_component(fig, "Figure")
@@ -726,7 +756,11 @@ def main():
     s4 = common(sub.add_parser("fuse"))
     s4.add_argument("output")
     s4.add_argument("inputs", nargs="+")
-    s4.add_argument("--voxel", type=float, required=True,
+    s4.add_argument("--method", choices=("remesh", "boolean"),
+                    default="remesh",
+                    help="boolean for attaching primitives such as a base; "
+                         "remesh for merging organic parts")
+    s4.add_argument("--voxel", type=float, default=0.0,
                     help="MUST be coarser than the finest input mesh")
     s4.add_argument("--smooth", type=int, default=1)
     s4.set_defaults(fn=cmd_fuse)

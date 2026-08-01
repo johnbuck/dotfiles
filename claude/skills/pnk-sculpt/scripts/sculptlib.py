@@ -336,7 +336,26 @@ def cleanup_after_boolean(obj):
     return obj
 
 
-def boolean(target, cutter, op, remove_cutter=True):
+class BooleanCollapse(RuntimeError):
+    """An exact boolean consumed the target instead of editing it."""
+
+
+def boolean(target, cutter, op, remove_cutter=True, max_loss=0.5):
+    """Apply an exact boolean, and refuse to accept a collapsed result.
+
+    Blender's exact solver does not fail loudly on a dense organic mesh: it
+    returns something. Observed twice in this pipeline, an 850k-face figure
+    became 7k, and a 1.13M-face figure became 594 while still reporting itself
+    watertight. Both times the geometry was gone and nothing said so, so the
+    damage was only found several slow steps later.
+
+    A small cutter cannot legitimately remove most of the target, so treat that
+    as failure, restore the mesh and raise. `max_loss` is the fraction of faces
+    that may disappear before we call it a collapse.
+    """
+    before_faces = len(target.data.polygons)
+    backup = target.data.copy()
+
     m = target.modifiers.new("bool", "BOOLEAN")
     m.operation = op
     m.object = cutter
@@ -345,7 +364,20 @@ def boolean(target, cutter, op, remove_cutter=True):
     bpy.ops.object.modifier_apply(modifier=m.name)
     if remove_cutter:
         bpy.data.objects.remove(cutter, do_unlink=True)
-    return cleanup_after_boolean(target)
+    cleanup_after_boolean(target)
+
+    after_faces = len(target.data.polygons)
+    if after_faces < before_faces * (1.0 - max_loss):
+        old = target.data
+        target.data = backup
+        bpy.data.meshes.remove(old)
+        raise BooleanCollapse(
+            f"{op} boolean collapsed the mesh: {before_faces} -> "
+            f"{after_faces} faces. The target has been restored. Exact "
+            f"booleans are unreliable on dense organic meshes; run this after "
+            f"a fuse remesh, or use a remesh-based union instead.")
+    bpy.data.meshes.remove(backup)
+    return target
 
 
 def fill_holes(obj):
