@@ -24,9 +24,15 @@ background visible between them. Both hands empty and open, fingers relaxed and
 slightly separated.
 
 FRAMING
-The complete figure from the top of the head to below the feet, entirely inside
-the frame with a margin of empty space on all four sides. Nothing cropped by the
-edge. The figure fills most of the frame vertically.
+Produce the image in PORTRAIT orientation, clearly taller than it is wide,
+roughly two units wide to three tall. The complete figure from the top of the
+head to below the feet, entirely inside the frame with a margin of empty space
+on all four sides. Nothing cropped by the edge. The figure fills most of the
+frame vertically and most of its width.
+
+A standing figure in a landscape frame wastes two thirds of the pixels on empty
+background, and the reconstructor only ever sees what is left after it
+downsamples, so an over-wide frame directly costs resolution on the subject.
 
 BACKGROUND
 Plain, flat, mid-grey, completely empty. No floor, no ground plane, no cast

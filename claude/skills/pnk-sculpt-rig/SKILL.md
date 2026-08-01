@@ -174,6 +174,31 @@ $B $S/mesh.py -- render work/testbend.blend bend --outdir renders
 If the torso deforms with the arm, the weights need work in the GUI. Finding
 that now costs one render; finding it after a full pose costs the pose.
 
+## How far you can actually pose it
+
+Measured on a 200 mm armoured figure, comparing closeups of the same shoulder:
+
+| Joint rotation | Result |
+|---|---|
+| about 30 degrees | Clean. Armour plates keep their shape, no cracks. |
+| about 85 degrees | Pauldron plates fan out into stretched spikes, the chestplate cracks across, the collar goes ragged. |
+
+So **keep individual joints near 30 degrees** unless you are willing to fix the
+result by hand. This is not a weighting bug you can tune away, and the reason is
+worth understanding: skinning deforms everything continuously, and a steel
+pauldron is not a continuous material. Bending it smoothly is still bending it.
+
+Weight smoothing (on by default, `--smooth-weights`) removes the cracking and
+the ragged edges, which are genuine weighting artefacts. It does not and cannot
+stop a rigid plate from bending.
+
+For an ambitious pose on an armoured figure, treat the armour the way the base
+is treated: separate the rigid pieces before rigging, pose the body, and
+reattach them rigidly afterwards.
+
+Toes were checked at the same time and are fine: a 40 degree toe rotation left
+the boot clean. Note the control is `toe_fk.L`, not `toe.L`.
+
 ## Pose
 
 Poses are JSON: bone name to `[rx, ry, rz]` in degrees, XYZ Euler, in bone

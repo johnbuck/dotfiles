@@ -29,6 +29,7 @@ import bpy
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sculptlib import (  # noqa: E402
     ANGLE_TAGS, add_modifier_apply, argv, check, clear, decimate_safely,
+    find_crotch,
     health, is_watertight, join_all, keep_largest_component, load, load_one,
     mm_per_unit, min_wall_thickness, report, save, select_only, setup_studio,
     slice_profile, subdivide, voxel_remesh, weld, world_verts,
@@ -151,6 +152,25 @@ def cmd_landmarks(a):
               f"(stylized heroic is 7 to 8)")
     except SystemExit as e:
         print(f"neck detection failed: {e}")
+
+    # Heads-tall on its own is misleading, and this is worth knowing before you
+    # trust it: a reconstruction that reads obviously stocky can still measure
+    # 8.6 heads, because a small head and short legs cancel out in that ratio.
+    # Leg fraction is what "short and wide" actually means, so report both.
+    crotch = find_crotch(obj, lo[2], hi[2])
+    if crotch is not None:
+        leg_frac = (crotch - lo[2]) / H
+        print(f"\ncrotch z={crotch:.4f} -> legs are {leg_frac * 100:.1f}% of "
+              f"height (a heroic figure is about 47 to 52%)")
+        if leg_frac < 0.44:
+            print("  SHORT LEGS. Run `reshape` before grafting or socketing, "
+                  "and re-measure afterwards.")
+        print(f"  suggested reshape: --ankle {lo[2] + H * 0.10:.4f} "
+              f"--hip {crotch:.4f} --legs "
+              f"{min(1.45, 0.485 / max(leg_frac, 0.2)):.2f}")
+    else:
+        print("\ncrotch not found (a tabard or robe between the legs defeats "
+              "the scan); pick --ankle and --hip off the width profile")
 
     # Extremities, for finding a hand that should hold a prop.
     xr = hi[0] - lo[0]

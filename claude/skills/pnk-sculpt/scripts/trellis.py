@@ -120,6 +120,27 @@ def free_vram(cfg):
     return out
 
 
+# Measured peaks, in MiB, plus headroom. Resolution is only half the story: the
+# quantisation and the subject's own voxel count matter too, and a bust that
+# fills the frame is far heavier than a whole figure at the same resolution.
+#
+# f16@512 was originally estimated at 3200 from a q8 measurement, so a run with
+# 4278 MiB free went ahead without a window and died inside the shape decode
+# with "c2s: alloc failed". Estimate high: the cost of an unnecessary window is
+# a couple of minutes, the cost of an OOM is the whole run.
+VRAM_PEAK = {
+    ("f16", 512): 5000, ("f16", 1024): 7000, ("f16", 1536): 9000,
+    ("q8", 512): 3000, ("q8", 1024): 5000, ("q8", 1536): 7000,
+    ("q4", 512): 2200, ("q4", 1024): 3800, ("q4", 1536): 5500,
+}
+VRAM_MARGIN = 1.25
+
+
+def vram_estimate(res, quant):
+    base = VRAM_PEAK.get((quant, res), 9000)
+    return int(base * VRAM_MARGIN)
+
+
 # -------------------------------------------------------------------- run --
 
 def cmd_run(a):
@@ -135,8 +156,7 @@ def cmd_run(a):
     print(f">> uploading {a.image}", flush=True)
     sh(["scp", "-q", a.image, f"{host}:{remote_in}"])
 
-    need = a.expect_vram_mb or {512: 3200, 1024: 7000, 1536: 9200}.get(
-        a.res, 9200)
+    need = a.expect_vram_mb or vram_estimate(a.res, a.quant)
     have = free_vram(cfg).get(gpu, 0)
     print(f"GPU {gpu}: {have} MiB free, this run wants about {need} MiB")
 
@@ -183,8 +203,20 @@ ls -l "{remote_out}" 2>/dev/null || echo "NO OUTPUT"
 
     if "NO OUTPUT" in r.stdout or "rc=0" not in r.stdout:
         tail = ssh_script(host, f"tail -40 {remote_log}", check=False)
-        print("\n--- remote log tail ---")
-        print(tail.stdout)
+        blob = tail.stdout + r.stdout
+        if "alloc failed" in blob or "out of memory" in blob.lower():
+            print("\nOUT OF VRAM. The run was given "
+                  f"{need} MiB of headroom and needed more.")
+            if not stopped:
+                print("Re-run with --window to stop the resident service "
+                      "first. That is almost always the fix.")
+            else:
+                print("A window was already open, so this subject genuinely "
+                      "does not fit. Drop one resolution step, or use a "
+                      "smaller quant.")
+        else:
+            print("\n--- remote log tail ---")
+            print(tail.stdout)
         sys.exit("reconstruction failed")
 
     os.makedirs(a.outdir, exist_ok=True)
@@ -203,7 +235,11 @@ PATTERNS = {
     "raw_faces": r"remesh[^0-9]*([0-9,]+)\s*faces",
     "floaters": r"([0-9,]+)\s*floater",
     "components": r"uv_bake:\s*([0-9]+)\s*component",
-    "decimated": r"decimate[^0-9]*([0-9,]+)\s*->\s*([0-9,]+)",
+    # trellis.cpp writes this as
+    #   decimate_qem_gpu(target=300000): V 4905782->136573, F 9883936->297340
+    # so anchor on the FACE pair, not on the word "decimate" plus the next
+    # numbers, which picks up the target and then fails to find an arrow.
+    "decimated": r"decimate[^\n]*?\bF\s*([0-9,]+)\s*->\s*([0-9,]+)",
 }
 
 

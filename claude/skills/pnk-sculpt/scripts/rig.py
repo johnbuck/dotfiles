@@ -42,8 +42,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sculptlib import (  # noqa: E402
     add_modifier_apply, append_object, argv, check, clear, health,
     is_watertight, keep_largest_component, load_one, mm_per_unit, save,
-    scene_meshes, select_only, setup_studio, slice_profile, voxel_remesh,
-    weld, world_verts,
+    find_crotch, scene_meshes, select_only, setup_studio, slice_profile,
+    voxel_remesh, weld, world_verts,
 )
 
 
@@ -98,88 +98,6 @@ def the_armature(prefer_generated=True):
 
 
 # ----------------------------------------------------------------- metarig --
-
-def section_blobs(vs, z, tol, cell):
-    """How many separate pieces of material cross a plane, largest first.
-
-    Grid the band in x and y and flood fill occupied cells. Cheap, and it does
-    not care about mesh topology, only about where material actually is.
-    """
-    band = [v for v in vs if abs(v.z - z) < tol]
-    if not band:
-        return []
-    occ = {}
-    for v in band:
-        occ.setdefault((int(v.x // cell), int(v.y // cell)), []).append(v)
-    seen, blobs = set(), []
-    for key in occ:
-        if key in seen:
-            continue
-        stack, members = [key], []
-        seen.add(key)
-        while stack:
-            k = stack.pop()
-            members += occ[k]
-            for dx in (-1, 0, 1):
-                for dy in (-1, 0, 1):
-                    nk = (k[0] + dx, k[1] + dy)
-                    if nk in occ and nk not in seen:
-                        seen.add(nk)
-                        stack.append(nk)
-        blobs.append(members)
-    blobs.sort(key=len, reverse=True)
-    return blobs
-
-
-def find_crotch(obj, zlo, zhi, lo_f=0.25, hi_f=0.62, steps=60, bins=41):
-    """Highest height that still shows a gap between the legs.
-
-    Two earlier approaches failed on a real figure and are worth knowing about,
-    because both look reasonable on paper:
-
-    - Widest band below the waist. On a costumed figure the widest band is a
-      skirt hem, a cape or a boot flare, not the pelvis. It put the hip at 34%
-      of height.
-    - Lowest band where the section is a single blob. A cape hanging behind the
-      legs merges them at mid-thigh, so it answered 25%.
-
-    What survives both is looking for an actual gap on the CENTRELINE of the
-    FRONT surface. A cape behind the legs occupies the same x range but a
-    different y, so restricting to the front half ignores it, and a hem does not
-    close the gap between the legs, only widens the silhouette. A tabard hanging
-    between the legs still defeats this, hence the caller's fallback.
-    """
-    vs = world_verts(obj)
-    H = zhi - zlo
-    tol = H * 0.005
-    xs = [v.x for v in vs]
-    cx = (max(xs) + min(xs)) * 0.5
-    width = max(xs) - min(xs)
-    if width <= 0:
-        return None
-    best = None
-    for i in range(steps + 1):
-        f = lo_f + (hi_f - lo_f) * i / steps
-        z = zlo + H * f
-        band = [v for v in vs if abs(v.z - z) < tol]
-        if len(band) < 40:
-            continue
-        ys = sorted(v.y for v in band)
-        front_cut = ys[len(ys) // 2]
-        band = [v for v in band if v.y <= front_cut]
-        if len(band) < 20:
-            continue
-        occ = set()
-        for v in band:
-            occ.add(int((v.x - cx) / width * bins))
-        mid = 0
-        if mid in occ:
-            continue                      # material on the centreline: no gap
-        left = [b for b in occ if b < mid]
-        right = [b for b in occ if b > mid]
-        if left and right:
-            best = z                      # legs either side of an empty middle
-    return best
 
 
 def measure_landmarks(obj):
@@ -655,6 +573,31 @@ def cmd_generate(a):
     bpy.ops.object.parent_set(type="ARMATURE_AUTO")
     print("bound the mesh with automatic weights")
 
+    # Automatic weights on voxel topology produce harsh, noisy transitions,
+    # because there are no edge loops for the falloff to follow. Smoothing them
+    # and capping how many bones may influence one vertex will not make a plate
+    # pauldron behave like a plate pauldron, but it does stop the tearing that
+    # raw auto-weights show at a strong bend.
+    if a.smooth_weights:
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.object.mode_set(mode="OBJECT")
+        try:
+            bpy.ops.object.vertex_group_limit_total(limit=a.max_influences)
+            # vertex_group_smooth only polls in edit or weight-paint mode, and
+            # it acts on the selection, so select everything first.
+            bpy.ops.object.mode_set(mode="EDIT")
+            bpy.ops.mesh.select_all(action="SELECT")
+            bpy.ops.object.vertex_group_smooth(group_select_mode="ALL",
+                                               factor=0.5,
+                                               repeat=a.smooth_weights)
+            bpy.ops.object.mode_set(mode="OBJECT")
+            print(f"smoothed weights x{a.smooth_weights}, capped at "
+                  f"{a.max_influences} influences per vertex")
+        except RuntimeError as e:
+            if bpy.context.object.mode != "OBJECT":
+                bpy.ops.object.mode_set(mode="OBJECT")
+            print(f"weight cleanup skipped: {e}")
+
     meta.hide_set(True)
     save(a.output)
     print("\nNEXT: `pose`. Verify one strong bend before committing to a full "
@@ -860,6 +803,10 @@ def main():
     g = sub.add_parser("generate")
     g.add_argument("input")
     g.add_argument("output")
+    g.add_argument("--smooth-weights", type=int, default=4,
+                   help="weight smoothing passes after auto-binding; 0 to skip")
+    g.add_argument("--max-influences", type=int, default=4,
+                   help="bones allowed to influence one vertex")
     g.add_argument("--decimate", type=int, default=150_000,
                    help="face budget before binding; 0 disables")
     g.set_defaults(fn=cmd_generate)

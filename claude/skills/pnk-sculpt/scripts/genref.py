@@ -30,6 +30,7 @@ import urllib.error
 import urllib.request
 
 API = "https://openrouter.ai/api/v1/chat/completions"
+CROP = True
 
 
 def get_key(env_name, key_command):
@@ -80,6 +81,39 @@ def generate(key, model, prompt, ref=None, timeout=300):
         raise SystemExit(f"HTTP {e.code}: {detail}")
 
 
+def autocrop(path, margin=0.08, portrait=0.62):
+    """Crop a generated image down to the subject.
+
+    Image models ignore aspect-ratio instructions: asking for portrait still
+    returns 16:9, so a standing figure occupies the middle third and two thirds
+    of the pixels are empty background. The reconstructor downsamples whatever
+    it is given, so that wasted frame is resolution taken straight off the
+    subject. Cropping is mechanical, so do it rather than re-prompting.
+    """
+    try:
+        from PIL import Image, ImageChops
+    except ImportError:
+        return path
+    im = Image.open(path).convert("RGB")
+    w, h = im.size
+    bg = Image.new("RGB", im.size, im.getpixel((4, 4)))
+    mask = ImageChops.difference(im, bg).convert("L").point(
+        lambda p: 255 if p > 18 else 0)
+    box = mask.getbbox()
+    if not box:
+        return path
+    x0, y0, x1, y1 = box
+    mh, mv = int((x1 - x0) * margin), int((y1 - y0) * margin * 0.6)
+    x0, y0 = max(0, x0 - mh), max(0, y0 - mv)
+    x1, y1 = min(w, x1 + mh), min(h, y1 + mv)
+    want = int((y1 - y0) * portrait)
+    if (x1 - x0) < want:
+        cx = (x0 + x1) // 2
+        x0, x1 = max(0, cx - want // 2), min(w, cx + want // 2)
+    im.crop((x0, y0, x1, y1)).save(path)
+    return path
+
+
 def save_images(resp, out, stem):
     msg = (resp.get("choices") or [{}])[0].get("message") or {}
     imgs = msg.get("images") or []
@@ -95,6 +129,8 @@ def save_images(resp, out, stem):
         path = os.path.join(out, f"{stem}{'' if i == 0 else f'_{i}'}.{ext}")
         with open(path, "wb") as f:
             f.write(base64.b64decode(b64))
+        if CROP:
+            autocrop(path)
         written.append(path)
     if not written:
         txt = (msg.get("content") or "")[:300]
@@ -115,6 +151,8 @@ def main():
     p.add_argument("-n", "--count", type=int, default=3,
                    help="candidates; generation is cheap, a bad reference is not")
     p.add_argument("--stem", default="cand")
+    p.add_argument("--no-crop", action="store_true",
+                   help="keep the full frame instead of cropping to the subject")
     p.add_argument("--key-env", default="OPENROUTER_API_KEY")
     p.add_argument("--key-command", default=None)
     p.add_argument("--config", default=os.path.expanduser(
@@ -130,6 +168,8 @@ def main():
         if cfg.get("image_model") and a.model == p.get_default("model"):
             a.model = cfg["image_model"]
 
+    global CROP
+    CROP = not a.no_crop
     key = get_key(a.key_env, key_command)
     prompt = open(a.prompt_file).read()
     os.makedirs(a.out, exist_ok=True)

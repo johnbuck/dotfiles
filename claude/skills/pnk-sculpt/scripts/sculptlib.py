@@ -497,6 +497,89 @@ def probe_surface(bvh, x, z, from_y=-1.0, spread=0.004, n=2):
     return statistics.median(hits), max(hits) - min(hits), len(hits)
 
 
+def section_blobs(vs, z, tol, cell):
+    """How many separate pieces of material cross a plane, largest first.
+
+    Grid the band in x and y and flood fill occupied cells. Cheap, and it does
+    not care about mesh topology, only about where material actually is.
+    """
+    band = [v for v in vs if abs(v.z - z) < tol]
+    if not band:
+        return []
+    occ = {}
+    for v in band:
+        occ.setdefault((int(v.x // cell), int(v.y // cell)), []).append(v)
+    seen, blobs = set(), []
+    for key in occ:
+        if key in seen:
+            continue
+        stack, members = [key], []
+        seen.add(key)
+        while stack:
+            k = stack.pop()
+            members += occ[k]
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    nk = (k[0] + dx, k[1] + dy)
+                    if nk in occ and nk not in seen:
+                        seen.add(nk)
+                        stack.append(nk)
+        blobs.append(members)
+    blobs.sort(key=len, reverse=True)
+    return blobs
+
+
+def find_crotch(obj, zlo, zhi, lo_f=0.25, hi_f=0.62, steps=60, bins=41):
+    """Highest height that still shows a gap between the legs.
+
+    Two earlier approaches failed on a real figure and are worth knowing about,
+    because both look reasonable on paper:
+
+    - Widest band below the waist. On a costumed figure the widest band is a
+      skirt hem, a cape or a boot flare, not the pelvis. It put the hip at 34%
+      of height.
+    - Lowest band where the section is a single blob. A cape hanging behind the
+      legs merges them at mid-thigh, so it answered 25%.
+
+    What survives both is looking for an actual gap on the CENTRELINE of the
+    FRONT surface. A cape behind the legs occupies the same x range but a
+    different y, so restricting to the front half ignores it, and a hem does not
+    close the gap between the legs, only widens the silhouette. A tabard hanging
+    between the legs still defeats this, hence the caller's fallback.
+    """
+    vs = world_verts(obj)
+    H = zhi - zlo
+    tol = H * 0.005
+    xs = [v.x for v in vs]
+    cx = (max(xs) + min(xs)) * 0.5
+    width = max(xs) - min(xs)
+    if width <= 0:
+        return None
+    best = None
+    for i in range(steps + 1):
+        f = lo_f + (hi_f - lo_f) * i / steps
+        z = zlo + H * f
+        band = [v for v in vs if abs(v.z - z) < tol]
+        if len(band) < 40:
+            continue
+        ys = sorted(v.y for v in band)
+        front_cut = ys[len(ys) // 2]
+        band = [v for v in band if v.y <= front_cut]
+        if len(band) < 20:
+            continue
+        occ = set()
+        for v in band:
+            occ.add(int((v.x - cx) / width * bins))
+        mid = 0
+        if mid in occ:
+            continue                      # material on the centreline: no gap
+        left = [b for b in occ if b < mid]
+        right = [b for b in occ if b > mid]
+        if left and right:
+            best = z                      # legs either side of an empty middle
+    return best
+
+
 def min_wall_thickness(obj, samples=4000, seed=1, opposing=0.5):
     """Estimate the thinnest wall by casting inward rays from the surface.
 
@@ -525,6 +608,7 @@ def min_wall_thickness(obj, samples=4000, seed=1, opposing=0.5):
     eps = obj.dimensions.length * 1e-5
     dists = []
     rejected = 0
+    outside = 0
     for i in idx:
         p = polys[i]
         c = mw @ p.center
@@ -536,17 +620,33 @@ def min_wall_thickness(obj, samples=4000, seed=1, opposing=0.5):
         if hn is not None and hn.dot(d_ray) < opposing:
             rejected += 1
             continue
-        dists.append(d + eps)
+        # Is the span actually MATERIAL? A ray crossing a narrow surface slot
+        # also lands on a roughly opposing face, so the normal test alone
+        # measures crevices, not walls, and a detailed sculpt then reports a
+        # sub-millimetre "wall thickness" everywhere. Sample the midpoint: for a
+        # real wall it lies inside the solid, for a slot it lies in open air.
+        mid = c + d_ray * (d * 0.5)
+        nloc, nnor, _, _ = bvh.find_nearest(mid)
+        if nloc is None or (mid - nloc).dot(nnor) > 0:
+            outside += 1
+            continue
+        dists.append((d + eps, c))
     if not dists:
         return None
-    dists.sort()
+    dists.sort(key=lambda t: t[0])
+    vals = [d for d, _ in dists]
     return {
-        "min": dists[0],
-        "p01": dists[int(len(dists) * 0.01)],
-        "p05": dists[int(len(dists) * 0.05)],
-        "median": dists[len(dists) // 2],
-        "samples": len(dists),
+        "min": vals[0],
+        "p01": vals[int(len(vals) * 0.01)],
+        "p05": vals[int(len(vals) * 0.05)],
+        "median": vals[len(vals) // 2],
+        "samples": len(vals),
         "rejected_creases": rejected,
+        "rejected_slots": outside,
+        # Keep where the thin samples are. A percentile on its own cannot tell
+        # you whether a figure has one genuinely fragile feature or is simply
+        # covered in fine surface detail, and those need opposite responses.
+        "thin_points": [c for _, c in dists[:max(20, len(dists) // 100)]],
     }
 
 
@@ -648,6 +748,65 @@ def to_millimetres(obj, height_mm):
     return obj
 
 
+def export_3mf(obj, path, unit="millimeter"):
+    """Write a minimal but valid 3MF.
+
+    Blender has no 3MF exporter, and `hasattr(bpy.ops.wm, "threemf_export")`
+    reports True regardless because bpy.ops resolves attribute access lazily and
+    never raises. Do not use hasattr to probe for an operator; check
+    `dir(bpy.ops.wm)` or call it.
+
+    3MF matters here because STL is naked triangles with no declared unit, which
+    is how a 250 mm figure ends up printing at 250 inches. A 3MF states its unit,
+    so the slicer cannot guess wrong. The format is a zip holding three XML
+    parts, so writing one directly is straightforward.
+    """
+    import zipfile
+    from xml.sax.saxutils import escape  # noqa: F401  (kept for future metadata)
+
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bmesh.ops.triangulate(bm, faces=bm.faces[:])
+    mw = obj.matrix_world
+    verts = [mw @ v.co for v in bm.verts]
+    index = {v: i for i, v in enumerate(bm.verts)}
+    tris = [tuple(index[lv] for lv in f.verts) for f in bm.faces]
+    bm.free()
+
+    vx = "".join(
+        f'<vertex x="{v.x:.6g}" y="{v.y:.6g}" z="{v.z:.6g}"/>' for v in verts)
+    tx = "".join(
+        f'<triangle v1="{a}" v2="{b}" v3="{c}"/>' for a, b, c in tris)
+    model = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        f'<model unit="{unit}" xml:lang="en-US" '
+        'xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">'
+        '<resources><object id="1" type="model"><mesh>'
+        f'<vertices>{vx}</vertices><triangles>{tx}</triangles>'
+        '</mesh></object></resources>'
+        '<build><item objectid="1"/></build></model>'
+    )
+    content_types = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>'
+        '</Types>'
+    )
+    rels = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Target="/3D/3dmodel.model" Id="rel0" '
+        'Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>'
+        '</Relationships>'
+    )
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml", content_types)
+        z.writestr("_rels/.rels", rels)
+        z.writestr("3D/3dmodel.model", model)
+    return len(verts), len(tris)
+
+
 def export_mesh_file(obj, path):
     """Write one object to .stl, .3mf, .obj, .ply or .glb by extension.
 
@@ -665,10 +824,9 @@ def export_mesh_file(obj, path):
             bpy.ops.export_mesh.stl(filepath=path, use_selection=True,
                                     ascii=False)
     elif ext == ".3mf":
-        try:
-            bpy.ops.wm.threemf_export(filepath=path, export_selected_objects=True)
-        except (AttributeError, TypeError):
-            bpy.ops.export_mesh.threemf(filepath=path, use_selection=True)
+        nv, nt = export_3mf(obj, path)
+        print(f"   3mf: {nv} vertices, {nt} triangles, unit=millimeter",
+              flush=True)
     elif ext == ".obj":
         bpy.ops.wm.obj_export(filepath=path, export_selected_objects=True)
     elif ext == ".ply":

@@ -91,6 +91,18 @@ def cmd_gate(a):
         print(f"  wall thickness   min={t['min'] / mm:.3f} mm  "
               f"p01={t['p01'] / mm:.3f} mm  median={t['median'] / mm:.3f} mm "
               f"({t['samples']} samples)")
+        pts = t.get("thin_points") or []
+        if pts:
+            zs = sorted((c.z for c in pts))
+            lo_z, hi_z = zs[0], zs[-1]
+            frac_lo = (lo_z - min(v.z for v in world_verts(obj))) / h["dims"][2]
+            frac_hi = (hi_z - min(v.z for v in world_verts(obj))) / h["dims"][2]
+            span = (hi_z - lo_z) / h["dims"][2]
+            print(f"  thinnest {len(pts)} samples sit between "
+                  f"{frac_lo * 100:.0f}% and {frac_hi * 100:.0f}% of height"
+                  + ("  (spread over the whole figure: this is surface detail, "
+                     "not one fragile part)" if span > 0.5 else
+                     "  (clustered: likely one specific feature)"))
         if t["p01"] / mm < floor:
             fails.append(
                 f"thinnest 1% of walls is {t['p01'] / mm:.3f} mm, below the "

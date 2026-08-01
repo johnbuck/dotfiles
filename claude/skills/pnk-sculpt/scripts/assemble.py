@@ -46,12 +46,33 @@ import bmesh  # noqa: E402
 
 
 def open_figure(path, name="Figure"):
+    """Open a file and return the main mesh, KEEPING every other object.
+
+    The earlier version appended a single object. After a graft the file holds
+    both Body and Head, so adding a base silently discarded the head and the
+    fuse produced a headless figure with a plinth. Nothing errored; the face
+    count just quietly dropped by a factor of twenty.
+
+    So link everything, and pick the largest mesh as the one to operate on.
+    """
     clear()
-    if path.endswith(".blend"):
-        obj = append_object(path, prefer="Figure", newname=name)
-    else:
-        obj = load_one(path, name)
-    return obj
+    if not path.endswith(".blend"):
+        return load_one(path, name)
+    with bpy.data.libraries.load(path, link=False) as (src, dst):
+        dst.objects = list(src.objects)
+    meshes = []
+    for o in dst.objects:
+        if o is None:
+            continue
+        bpy.context.scene.collection.objects.link(o)
+        if o.type == "MESH":
+            meshes.append(o)
+    if not meshes:
+        raise SystemExit(f"no mesh objects in {path}")
+    if len(meshes) > 1:
+        print(f"opened {len(meshes)} objects: {[o.name for o in meshes]}")
+    primary = max(meshes, key=lambda o: len(o.data.polygons))
+    return primary
 
 
 # ------------------------------------------------------------------ socket --
@@ -142,6 +163,25 @@ def cmd_graft(a):
         voxel_remesh(head, a.head_voxel)
         head, _ = keep_largest_component(head, "Head")
         check("head resampled", head, a.height_mm)
+
+    # A bust reference is head, shoulders and a plinth. Scaled and dropped onto
+    # the body it brings all three, so the figure ends up with a second set of
+    # tiny shoulder plates sitting on its own, and a disc of plinth inside its
+    # chest. Cut everything below the join, leaving a small overlap so the fuse
+    # has material to weld through.
+    if a.head_trim:
+        cut_z = b_neck[1] - a.head_overlap * b_H
+        before = len(head.data.polygons)
+        select_only(head)
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.select_all(action="SELECT")
+        bpy.ops.mesh.bisect(plane_co=(0, 0, cut_z), plane_no=(0, 0, 1),
+                            clear_inner=True, clear_outer=False)
+        bpy.ops.object.mode_set(mode="OBJECT")
+        fill_holes(head)
+        print(f"   trimmed the bust below z={cut_z:.4f}: "
+              f"{before} -> {len(head.data.polygons)} faces", flush=True)
+        check("head trimmed", head, mm=mm_per_unit(body, a.height_mm))
 
     remove_head(body, b_neck[1], b_cx, b_cy, a.head_radius)
     fill_holes(body)
@@ -474,6 +514,12 @@ def main():
     s2.add_argument("--head-neck-hi", type=float, default=0.75)
     s2.add_argument("--offset", type=floats, default=(0, 0, 0))
     s2.add_argument("--yaw", type=float, default=0.0)
+    s2.add_argument("--no-head-trim", dest="head_trim", action="store_false",
+                    default=True,
+                    help="keep the bust's shoulders and plinth (rarely wanted)")
+    s2.add_argument("--head-overlap", type=float, default=0.02,
+                    help="how far below the neck to keep, as a fraction of "
+                         "body height, so the fuse has material to weld")
     s2.set_defaults(fn=cmd_graft)
 
     s3 = common(sub.add_parser("base"))

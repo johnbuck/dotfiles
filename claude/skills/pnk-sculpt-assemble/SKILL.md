@@ -52,7 +52,7 @@ rarely on the axis the prop needs. Fill it, then cut a fresh one.
 
 ```bash
 $B $S/assemble.py -- socket work/body_prop.blend work/body_socket.blend \
-   --at -0.3483,-0.0913,0.0732 --plug-mm 5.0 --radius-mm 3.9 \
+   --at=-0.3483,-0.0913,0.0732 --plug-mm 5.0 --radius-mm 3.9 \
    --depth-mm 60 --tilt 0,7,0 --height-mm 200
 ```
 
@@ -149,7 +149,7 @@ Find the sockets from the geometry:
 
 ```bash
 $B $S/assemble.py -- findeyes work/figure.blend \
-   --x-range -0.095,0.075 --z-range 0.395,0.465
+   --x-range=-0.095,0.075 --z-range 0.395,0.465
 ```
 
 It prints a depth map and suggests `--at-z`, `--centre-x` and `--dx`. If the

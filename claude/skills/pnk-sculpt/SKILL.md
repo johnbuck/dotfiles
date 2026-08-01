@@ -124,6 +124,10 @@ comes out as a blank mask. A separate bust portrait gives the face the whole
 frame. Long thin props are better built parametrically than reconstructed at
 all. This is the single biggest quality lever in the pipeline.
 
+**Negative values need `--opt=value`.** `--at -0.35,0,0.07` fails: argparse
+reads a leading minus as another option name, because the value is not a bare
+number. Every documented example uses the `=` form for this reason.
+
 **Measure, never guess.** Every coordinate typed by hand in the original build
 of this pipeline was wrong at least once, and the errors were only visible after
 a slow step had run. `mesh.py landmarks` finds the neck, hips and hands from

@@ -109,7 +109,7 @@ tells you which.
 
 ```bash
 $B $S/mesh.py -- reshape work/body_clean.blend work/body_prop.blend \
-   --legs 1.22 --narrow 0.95 --ankle -0.44 --hip -0.03 --renorm --height-mm 200
+   --legs 1.22 --narrow 0.95 --ankle=-0.44 --hip=-0.03 --renorm --height-mm 200
 ```
 
 Get `--ankle` and `--hip` from the width profile: the ankle is above the boot
