@@ -27,19 +27,42 @@ re-close to a solid. Topology does not matter because nothing will deform it
 again. For a game asset the rig is the deliverable: face count matters, UVs and
 materials must survive, watertightness stops mattering entirely.
 
+## Rig BEFORE the base is fused on
+
+This changes stage 5's order and it is not optional. Automatic weights are
+assigned by proximity, so a plinth fused to the feet gets weighted to the leg
+bones. Swing a leg forward and the base is dragged and stretched with it into a
+warped sliver, which then fails the print gate on wall thickness. It looks
+obviously wrong the moment you render it and is invisible until you do.
+
+So for the posed branch, stage 5 runs in two halves:
+
+```
+socket -> graft -> fuse (body + head)   ->  RIG, POSE, BAKE  ->  base -> fuse -> eyes
+```
+
+Do the same for any prop that should not bend: model and attach it after the
+pose is baked, not before.
+
 ## Read this before starting
 
-**This is the least reliable stage in the pipeline and the most likely to need
-the GUI.** A voxel-remeshed mesh has no edge loops at the joints, so automatic
-weights bleed across them and an elbow bends part of the ribcage with it. Bone
-placement in particular is something a script cannot verify for you: a slightly
-wrong knee still generates a valid rig, it just deforms badly, and you only find
-out after posing.
+**This is the least reliable stage in the pipeline.** A voxel-remeshed mesh has
+no edge loops at the joints, so automatic weights bleed across them and an elbow
+can bend part of the ribcage with it. Treat the output as a first draft, check a
+single strong bend before committing to a full pose, and expect to correct
+weights by hand for anything ambitious.
 
-It was also built after the rest of the pipeline had been proven, and has been
-exercised far less. Treat its output as a first draft, check a single strong
-bend before committing to a full pose, and expect to correct weights by hand for
-anything ambitious.
+The full print branch has been run end to end once, on a 200 mm figure: metarig,
+preview, generate, pose, bake, gate. The bake came back watertight and
+single-shell with surface roughness improved by the re-close (p95 dihedral 56 to
+22). That run is also where every warning below comes from.
+
+**Always run `preview` after `metarig`.** A misplaced bone generates a perfectly
+valid rig and only reveals itself as bad deformation after posing, by which
+point several slow steps have to be redone. The preview render costs seconds.
+This is not optional advice: the first validated run of this stage produced a
+skeleton whose arms lay entirely outside the mesh, and only the preview showed
+it.
 
 **Rig the lite mesh.** 50k to 150k faces. Automatic weights on a two-million-face
 mesh are slow and no better. `generate` decimates for you by default.
@@ -49,27 +72,50 @@ destroys UVs, so a rigged asset should branch from the textured reconstruction
 in `raw/`, cleaned only enough to be usable. Stage 7's textured GLB export is the
 right input.
 
-## Fit the metarig
+## What the fit does and does not do
+
+`metarig` measures the body and fits bones in all three axes: heights from the
+silhouette, depth from the body's own mid-Y at each height, and the arm and leg
+chains aimed at the measured hand and foot. That last part matters more than it
+sounds. Rigify's default arms follow its own T-pose, so on a figure in any other
+pose they end up outside the mesh entirely.
+
+Not fitted: fingers, toes and face bones. They are translated with the hand or
+head they belong to, so they land inside the body rather than beside it, but
+their individual placement is still Rigify's default. If you need working
+fingers, place them in the GUI.
+
+The landmark heights are checked for anatomical order (ankle below knee below
+hip below waist, and so on) and any inversion is reported loudly, because a
+skeleton built on an out-of-order landmark looks fine until it is posed.
+
+## Fit the metarig, then look at it
 
 ```bash
 S=~/.claude/skills/pnk-sculpt/scripts
 B="blender --background --factory-startup --python"
 
-$B $S/rig.py -- metarig work/figure_lite.blend work/metarig.blend
+$B $S/rig.py -- metarig work/figure.blend work/metarig.blend
+$B $S/rig.py -- preview work/metarig.blend bones --outdir renders
+python3 $S/sheet.py renders/bones_sheet.png renders/bones_a0.png renders/bones_a90.png
 ```
 
-This measures the mesh (ankle, knee, hip, waist, chest, shoulder, neck, crown,
-and the lateral extremities), adds Rigify's human metarig, scales it to the
-figure, and snaps the main bone chain to the measured heights. Fingers, toes and
-face bones stay at Rigify's defaults, because guessing them from a voxel mesh is
-worse than the default.
+`preview` builds every bone as a cylinder and renders it inside a see-through
+body, front and side. Bones are viewport overlays, so an ordinary render will
+not show them; building them as real geometry is what makes this checkable
+headlessly, and reviewable by someone who is not at the machine.
 
-The measured landmarks are printed. Sanity-check them against
-`mesh.py landmarks` output before continuing: if the hip or shoulder is
-obviously wrong, the rest of the skeleton is built on it.
+What to look for, in order of how often it is wrong:
 
-Open `work/metarig.blend` in the GUI and look at the bones. There is no headless
-substitute for this, and it is the cheapest correction you will ever make here.
+1. **Arms inside the arms.** Elbows within the limb, hands at the hands. This is
+   the failure mode that fitting exists to prevent.
+2. **Side view depth.** The spine should run through the torso, not float in
+   front of it or behind it. A cape or a backpack pulls the measured mid-depth
+   backward, so check this one specifically on a cloaked figure.
+3. **Hip above the crotch, knees at the knees.**
+4. **Shoulders inside the deltoids**, not out at the edge of a pauldron.
+
+Correct anything wrong in the GUI before generating.
 
 ## Generate and bind
 
@@ -99,13 +145,27 @@ space. Data rather than GUI state, so a pose is reviewable, diffable and
 reusable on the next character.
 
 ```bash
-$B $S/rig.py -- list work/rigged.blend        # exact control bone names
+$B $S/rig.py -- list work/rigged.blend        # drivable control bones
 $B $S/rig.py -- pose work/rigged.blend work/posed.blend --pose poses/draw-bow.json
 ```
 
-Rigify control bones are named like `upper_arm_fk.L`, `hand_ik.L`, `spine_fk.002`,
-`chest`, `head`. `list` is the reliable way to get them; guessing produces a
-"no such bone" warning and a silently unposed figure.
+**Target the `_fk` controls, not the plain bone names.** A generated rig has
+around 700 bones and most are constraint-driven: setting a rotation on
+`upper_arm.L` applies cleanly, saves without complaint, and moves nothing,
+because a constraint overrides it. `list` separates the drivable bones from the
+driven ones for exactly this reason, and `pose` warns if you hit a driven one.
+The useful names are `upper_arm_fk.L`, `forearm_fk.L`, `thigh_fk.R`,
+`shin_fk.R`, `spine_fk.00n`, `hips`, `chest`, `neck`, `head`.
+
+**Limbs default to IK**, and while a limb is in IK its FK controls are ignored,
+which is the same silent no-op by another route. `pose` flips every limb's
+`IK_FK` switch to FK before applying, and reports which. Pass `--keep-ik` if you
+are posing through IK targets instead.
+
+Both of these were found by validating this stage rather than by reading the
+documentation, so expect other Rigify conventions to bite the same way: when a
+pose does nothing, suspect a constraint or a mode switch before suspecting the
+numbers.
 
 Keep poses modest for printing. A deep bend self-intersects on the inside of the
 joint, and while the re-close usually survives it, a severe one does not.

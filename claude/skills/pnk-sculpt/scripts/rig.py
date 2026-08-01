@@ -42,7 +42,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sculptlib import (  # noqa: E402
     add_modifier_apply, append_object, argv, check, clear, health,
     is_watertight, keep_largest_component, load_one, mm_per_unit, save,
-    select_only, slice_profile, voxel_remesh, weld, world_verts,
+    scene_meshes, select_only, setup_studio, slice_profile, voxel_remesh,
+    weld, world_verts,
 )
 
 
@@ -57,7 +58,9 @@ def ensure_rigify():
 
 
 def the_mesh(name="Figure"):
-    ms = [o for o in bpy.context.scene.objects if o.type == "MESH"]
+    # scene_meshes filters out Rigify's WGT-* widget meshes, which are not in
+    # the view layer and cannot be selected.
+    ms = [m for m in scene_meshes("the file") if not m.name.startswith("WGT-")]
     if not ms:
         raise SystemExit("no mesh in the file")
     for m in ms:
@@ -66,14 +69,118 @@ def the_mesh(name="Figure"):
     return ms[0]
 
 
-def the_armature():
-    for o in bpy.context.scene.objects:
-        if o.type == "ARMATURE":
+def the_armature(prefer_generated=True):
+    """The armature to act on, preferring the GENERATED rig over the metarig.
+
+    After `generate` the file holds both, and the metarig is merely hidden. It
+    is often first in the scene, so taking the first armature found silently
+    targets it. That failure is nasty because everything appears to work: the
+    pose applies, the file saves, and the mesh does not move a millimetre,
+    because the metarig deforms nothing.
+
+    Rigify stamps the generated rig's armature data with a `rig_id`, which is
+    the reliable way to tell them apart.
+    """
+    arms = [o for o in bpy.context.scene.objects if o.type == "ARMATURE"]
+    if not arms:
+        raise SystemExit("no armature in the file")
+    if prefer_generated:
+        for o in arms:
+            if o.data.get("rig_id"):
+                return o
+        for o in arms:
+            if o.name == "rig" or o.name.startswith("rig"):
+                return o
+    for o in arms:
+        if o.name != "metarig":
             return o
-    raise SystemExit("no armature in the file")
+    return arms[0]
 
 
 # ----------------------------------------------------------------- metarig --
+
+def section_blobs(vs, z, tol, cell):
+    """How many separate pieces of material cross a plane, largest first.
+
+    Grid the band in x and y and flood fill occupied cells. Cheap, and it does
+    not care about mesh topology, only about where material actually is.
+    """
+    band = [v for v in vs if abs(v.z - z) < tol]
+    if not band:
+        return []
+    occ = {}
+    for v in band:
+        occ.setdefault((int(v.x // cell), int(v.y // cell)), []).append(v)
+    seen, blobs = set(), []
+    for key in occ:
+        if key in seen:
+            continue
+        stack, members = [key], []
+        seen.add(key)
+        while stack:
+            k = stack.pop()
+            members += occ[k]
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    nk = (k[0] + dx, k[1] + dy)
+                    if nk in occ and nk not in seen:
+                        seen.add(nk)
+                        stack.append(nk)
+        blobs.append(members)
+    blobs.sort(key=len, reverse=True)
+    return blobs
+
+
+def find_crotch(obj, zlo, zhi, lo_f=0.25, hi_f=0.62, steps=60, bins=41):
+    """Highest height that still shows a gap between the legs.
+
+    Two earlier approaches failed on a real figure and are worth knowing about,
+    because both look reasonable on paper:
+
+    - Widest band below the waist. On a costumed figure the widest band is a
+      skirt hem, a cape or a boot flare, not the pelvis. It put the hip at 34%
+      of height.
+    - Lowest band where the section is a single blob. A cape hanging behind the
+      legs merges them at mid-thigh, so it answered 25%.
+
+    What survives both is looking for an actual gap on the CENTRELINE of the
+    FRONT surface. A cape behind the legs occupies the same x range but a
+    different y, so restricting to the front half ignores it, and a hem does not
+    close the gap between the legs, only widens the silhouette. A tabard hanging
+    between the legs still defeats this, hence the caller's fallback.
+    """
+    vs = world_verts(obj)
+    H = zhi - zlo
+    tol = H * 0.005
+    xs = [v.x for v in vs]
+    cx = (max(xs) + min(xs)) * 0.5
+    width = max(xs) - min(xs)
+    if width <= 0:
+        return None
+    best = None
+    for i in range(steps + 1):
+        f = lo_f + (hi_f - lo_f) * i / steps
+        z = zlo + H * f
+        band = [v for v in vs if abs(v.z - z) < tol]
+        if len(band) < 40:
+            continue
+        ys = sorted(v.y for v in band)
+        front_cut = ys[len(ys) // 2]
+        band = [v for v in band if v.y <= front_cut]
+        if len(band) < 20:
+            continue
+        occ = set()
+        for v in band:
+            occ.add(int((v.x - cx) / width * bins))
+        mid = 0
+        if mid in occ:
+            continue                      # material on the centreline: no gap
+        left = [b for b in occ if b < mid]
+        right = [b for b in occ if b > mid]
+        if left and right:
+            best = z                      # legs either side of an empty middle
+    return best
+
 
 def measure_landmarks(obj):
     """Derive skeletal heights and widths from the mesh itself.
@@ -104,19 +211,58 @@ def measure_landmarks(obj):
 
     neck_z = narrowest_between(0.78, 0.92)
     waist_z = narrowest_between(0.52, 0.66)
+    waist_f = (waist_z - plo) / PH
 
-    # The hip is where width stops growing downward from the waist: below it
-    # the two legs separate again.
-    hip_z = zlo + H * 0.47
-    below = [p for p in bands if 0.38 <= (p[0] - plo) / PH <= 0.56]
-    if below:
-        hip_z = max(below, key=lambda p: p[1])[0]
+    # The hip sits just above the crotch, and the crotch is the one landmark on
+    # a standing figure that can be found without a heuristic: it is the lowest
+    # height at which the cross-section stops being two separate legs.
+    #
+    # Width alone does not work. The widest band below the waist is a skirt hem,
+    # a cape or a boot flare far more often than it is the pelvis, and on the
+    # first figure tried it put the hip at 34% of height.
+    crotch_z = find_crotch(obj, zlo, zhi)
+    if crotch_z is None:
+        crotch_z = zlo + H * 0.44
+        print("  (no clean crotch found; falling back to 44% of height)")
+    hip_z = min(crotch_z + H * 0.035, waist_z - H * 0.02)
 
     lat = max(v.x for v in vs) - min(v.x for v in vs)
     cx = (max(v.x for v in vs) + min(v.x for v in vs)) / 2
     shoulder_z = zlo + H * 0.82
     shoulder_half = width_at(0.80) * 0.42
     hip_half = width_at((hip_z - plo) / PH) * 0.25
+
+    # Depth. A skeleton snapped only in height sits on one flat Y plane, which
+    # in a side view floats in front of or behind the body it is meant to
+    # deform. Sampling the body's own mid-depth at each height fixes it.
+    def y_at(z, tol=None):
+        tol = tol or H * 0.02
+        g = [v.y for v in vs if abs(v.z - z) < tol]
+        if not g:
+            return 0.0
+        g.sort()
+        return (g[0] + g[-1]) * 0.5
+
+    # Limb ends, measured. Rigify's default arms point along its own T-pose and
+    # end up outside the mesh entirely on any figure that is not in that pose.
+    def extremity(sign, frac=0.09, zlo_f=0.0, zhi_f=1.0):
+        lo_z, hi_z = zlo + H * zlo_f, zlo + H * zhi_f
+        band = [v for v in vs if lo_z <= v.z <= hi_z]
+        if not band:
+            return None
+        edge = (max(v.x for v in band) if sign > 0
+                else min(v.x for v in band))
+        g = [v for v in band if abs(v.x - edge) < lat * frac]
+        if not g:
+            return None
+        return Vector((sum(v.x for v in g) / len(g),
+                       sum(v.y for v in g) / len(g),
+                       sum(v.z for v in g) / len(g)))
+
+    hand_l = extremity(+1, zlo_f=0.30, zhi_f=0.85)
+    hand_r = extremity(-1, zlo_f=0.30, zhi_f=0.85)
+    foot_l = extremity(+1, frac=0.25, zlo_f=0.0, zhi_f=0.10)
+    foot_r = extremity(-1, frac=0.25, zlo_f=0.0, zhi_f=0.10)
 
     lm = {
         "z_floor": zlo, "z_top": zhi, "height": H, "centre_x": cx,
@@ -134,9 +280,30 @@ def measure_landmarks(obj):
         "z_elbow": zlo + H * 0.62,
         "z_wrist": zlo + H * 0.50,
     }
+    lm["_y_at"] = y_at
+    lm["_hand"] = {"L": hand_l, "R": hand_r}
+    lm["_foot"] = {"L": foot_l, "R": foot_r}
     print("measured landmarks (Blender units):")
     for k, v in lm.items():
-        print(f"  {k:14s} {v: .4f}")
+        if not k.startswith("_"):
+            print(f"  {k:14s} {v: .4f}")
+    for side in ("L", "R"):
+        for what in ("_hand", "_foot"):
+            p = lm[what][side]
+            print(f"  {what[1:]}_{side:11s} "
+                  f"{'not found' if p is None else tuple(round(c, 4) for c in p)}")
+
+    # A skeleton built on an out-of-order landmark still generates a rig that
+    # looks fine until it is posed, so say so loudly here rather than let it
+    # through.
+    order = ["z_ankle", "z_knee", "z_hip", "z_waist", "z_chest", "z_shoulder",
+             "z_neck", "z_head_top"]
+    bad = [(a, b) for a, b in zip(order, order[1:]) if lm[a] >= lm[b]]
+    if bad:
+        for a, b in bad:
+            print(f"  WARNING: {a} ({lm[a]:.4f}) is not below {b} ({lm[b]:.4f})")
+        print("  The silhouette heuristics have mis-read this figure. Check it "
+              "in the GUI before generating, or place those bones by hand.")
     return lm
 
 
@@ -166,64 +333,226 @@ def cmd_metarig(a):
     print(f"metarig scaled by {scale:.4f} and placed on the floor plane")
 
     if a.snap:
-        snap_metarig(meta, lm)
+        snap_metarig(meta, lm, bend=a.bend)
 
     save(a.output)
-    print("\nNEXT: render this and look at it before generating. "
-          "`mesh.py render` will not show bones, so open it in the GUI, or "
-          "trust the printed bone heights below and correct in the GUI.\n"
-          "Bone placement is the one part of this pipeline that a machine "
-          "cannot verify for you: a slightly wrong knee still generates a rig, "
-          "it just deforms badly when posed.")
+    print("\nNEXT: look at it before generating, with\n"
+          f"  rig.py -- preview {a.output} bones\n"
+          "A wrong bone still generates a perfectly valid rig; it only shows "
+          "up as bad deformation after posing, by which point several slow "
+          "steps have to be redone. The preview render is cheap.")
 
 
-def snap_metarig(meta, lm):
-    """Move the main chain to the measured heights.
+def cmd_preview(a):
+    """Render the skeleton inside a see-through body, from several angles.
 
-    Only the bones whose position is derivable from a silhouette are touched.
-    Fingers, toes, face bones and the shoulder roll are left where Rigify put
-    them, because guessing them from a voxel mesh is worse than the default.
+    Bones are viewport overlays, so a normal render does not show them and
+    checking placement used to mean opening the GUI. That is a problem: it is
+    the one step nobody can automate, it happens at the exact moment when a
+    mistake is cheapest to fix, and it does not survive into a log.
+
+    Building each bone as an actual cylinder solves it. The picture is
+    reviewable, repeatable, and can be put in front of someone who is not
+    sitting at the machine.
     """
+    import math as _m
+    clear()
+    bpy.ops.wm.open_mainfile(filepath=a.input)
+    rig = the_armature(prefer_generated=False)
+    body = the_mesh()
+
+    bone_mat = bpy.data.materials.new("Bone")
+    bone_mat.use_nodes = True
+    bb = bone_mat.node_tree.nodes["Principled BSDF"]
+    bb.inputs["Base Color"].default_value = (0.95, 0.25, 0.15, 1)
+    bb.inputs["Emission Color"].default_value = (0.95, 0.25, 0.15, 1)
+    bb.inputs["Emission Strength"].default_value = 1.4
+
+    r = body.dimensions.z * a.bone_radius
+    made = 0
+    for b in rig.data.bones:
+        head = rig.matrix_world @ b.head_local
+        tail = rig.matrix_world @ b.tail_local
+        v = tail - head
+        if v.length < 1e-6:
+            continue
+        bpy.ops.mesh.primitive_cylinder_add(
+            vertices=8, radius=r, depth=v.length,
+            location=(head + tail) / 2)
+        c = bpy.context.view_layer.objects.active
+        c.rotation_mode = "QUATERNION"
+        c.rotation_quaternion = v.to_track_quat("Z", "Y")
+        c.name = f"bone_{b.name}"
+        c.data.materials.append(bone_mat)
+        made += 1
+    print(f"built {made} bone cylinders at radius {r:.4f}")
+
+    # A solid body hides the skeleton, so make it a ghost. Alpha blending in the
+    # viewport engine is enough; this render is for judging placement, not looks.
+    ghost = bpy.data.materials.new("Ghost")
+    ghost.use_nodes = True
+    gb = ghost.node_tree.nodes["Principled BSDF"]
+    gb.inputs["Base Color"].default_value = (0.65, 0.68, 0.72, 1)
+    gb.inputs["Alpha"].default_value = a.ghost_alpha
+    try:
+        ghost.blend_method = "BLEND"
+        ghost.show_transparent_back = False
+    except AttributeError:
+        pass
+    body.data.materials.clear()
+    body.data.materials.append(ghost)
+    for p in body.data.polygons:
+        p.use_smooth = True
+
+    rig.hide_render = True
+    objs = [o for o in bpy.context.scene.objects if o.type == "MESH"]
+    cam, tgt, ctr, H, dist = setup_studio(objs, clay=False)
+    outdir = a.outdir or os.path.join(os.path.dirname(os.path.abspath(a.input)),
+                                      "renders")
+    os.makedirs(outdir, exist_ok=True)
+    scn = bpy.context.scene
+    for ang in a.angles:
+        t = _m.radians(ang)
+        cam.location = (ctr.x + dist * _m.sin(t), ctr.y - dist * _m.cos(t),
+                        ctr.z)
+        scn.render.filepath = os.path.join(outdir, f"{a.prefix}_a{ang}.png")
+        bpy.ops.render.render(write_still=True)
+        print("wrote", scn.render.filepath, flush=True)
+    print("\nCheck: knees at the knees, hip above the crotch, shoulders inside "
+          "the deltoids, and the spine following the actual back rather than a "
+          "straight vertical line.")
+
+
+def snap_metarig(meta, lm, bend=0.05):
+    """Fit the main chain to the measured body in all three axes.
+
+    An earlier version set heights only, and the bone-preview render showed
+    exactly why that is not enough: the spine sat on one flat Y plane in front
+    of the torso, and both arms ran off Rigify's own T-pose direction and ended
+    up entirely outside the mesh, elbows and hands floating in mid-air.
+
+    So three things happen here rather than one. Heights come from the
+    silhouette. Depth comes from the body's mid-Y at each height. Arms and legs
+    are aimed at their measured extremity, which is the only way to follow the
+    pose the figure is actually in.
+
+    Bones that cannot be derived from a silhouette (fingers, toes, face) are
+    still not fitted, but they are TRANSLATED with the hand or head they belong
+    to, so at least they end up inside the body instead of beside it.
+    """
+    y_at = lm["_y_at"]
     bpy.context.view_layer.objects.active = meta
     bpy.ops.object.mode_set(mode="EDIT")
     eb = meta.data.edit_bones
 
-    def set_z(name, head_z=None, tail_z=None):
+    def place(name, head=None, tail=None):
         b = eb.get(name)
         if not b:
             print(f"  (no bone {name})")
-            return
-        if head_z is not None:
-            b.head.z = head_z
-        if tail_z is not None:
-            b.tail.z = tail_z
+            return None
+        if head is not None:
+            b.head = Vector(head)
+        if tail is not None:
+            b.tail = Vector(tail)
+        return b
 
-    set_z("spine", head_z=lm["z_hip"], tail_z=lm["z_waist"])
-    set_z("spine.001", head_z=lm["z_waist"], tail_z=lm["z_chest"])
-    set_z("spine.002", head_z=lm["z_chest"], tail_z=lm["z_shoulder"])
-    set_z("spine.003", head_z=lm["z_shoulder"], tail_z=lm["z_neck"])
-    set_z("spine.004", head_z=lm["z_neck"],
-          tail_z=lm["z_neck"] + (lm["z_head_top"] - lm["z_neck"]) * 0.25)
-    set_z("spine.006", tail_z=lm["z_head_top"])
+    cx = lm["centre_x"]
+
+    def spine_pt(z):
+        return (cx, y_at(z), z)
+
+    place("spine", spine_pt(lm["z_hip"]), spine_pt(lm["z_waist"]))
+    place("spine.001", spine_pt(lm["z_waist"]), spine_pt(lm["z_chest"]))
+    place("spine.002", spine_pt(lm["z_chest"]), spine_pt(lm["z_shoulder"]))
+    place("spine.003", spine_pt(lm["z_shoulder"]), spine_pt(lm["z_neck"]))
+    neck_mid = lm["z_neck"] + (lm["z_head_top"] - lm["z_neck"]) * 0.25
+    place("spine.004", spine_pt(lm["z_neck"]), spine_pt(neck_mid))
+
+    head_bone = eb.get("spine.006") or eb.get("head")
+    head_delta = None
+    if head_bone:
+        old = head_bone.head.copy()
+        new_head = Vector(spine_pt(neck_mid))
+        head_bone.head = new_head
+        head_bone.tail = Vector(spine_pt(lm["z_head_top"]))
+        head_delta = new_head - old
 
     for side, sgn in (("L", 1.0), ("R", -1.0)):
-        for name, hz, tz in (
-            ("thigh." + side, lm["z_hip"], lm["z_knee"]),
-            ("shin." + side, lm["z_knee"], lm["z_ankle"]),
-            ("upper_arm." + side, lm["z_shoulder"], lm["z_elbow"]),
-            ("forearm." + side, lm["z_elbow"], lm["z_wrist"]),
-        ):
-            set_z(name, head_z=hz, tail_z=tz)
-        b = eb.get("thigh." + side)
-        if b:
-            b.head.x = lm["centre_x"] + sgn * lm["hip_half"]
-        b = eb.get("upper_arm." + side)
-        if b:
-            b.head.x = lm["centre_x"] + sgn * lm["shoulder_half"]
+        # Legs: hip to a measured foot, with the knee on the way.
+        foot = lm["_foot"][side]
+        hip_pt = Vector((cx + sgn * lm["hip_half"], y_at(lm["z_hip"]),
+                         lm["z_hip"]))
+        ankle_pt = Vector((hip_pt.x, y_at(lm["z_ankle"]), lm["z_ankle"])) \
+            if foot is None else Vector((foot.x, y_at(lm["z_ankle"]),
+                                         lm["z_ankle"]))
+        t = (lm["z_hip"] - lm["z_knee"]) / max(
+            lm["z_hip"] - lm["z_ankle"], 1e-6)
+        knee_pt = hip_pt.lerp(ankle_pt, t)
+        # A perfectly straight limb has no bend plane, so Rigify's IK cannot
+        # work out which way the joint should fold and generation fails outright
+        # with "zero length vectors have no valid angle". Nudge the knee forward
+        # and (below) the elbow back: a few percent is enough to define the
+        # plane, and it matches how the joints actually bend.
+        knee_pt.y -= (hip_pt - ankle_pt).length * bend
+        place("thigh." + side, hip_pt, knee_pt)
+        place("shin." + side, knee_pt, ankle_pt)
+        if foot is not None:
+            fb = eb.get("foot." + side)
+            if fb:
+                delta = ankle_pt - fb.head.copy()
+                fb.head = ankle_pt
+                fb.tail = fb.tail + delta
+                tb = eb.get("toe." + side)
+                if tb:
+                    tb.head = tb.head + delta
+                    tb.tail = tb.tail + delta
+
+        # Arms: aim the whole chain at the measured hand. This is what the
+        # height-only version got badly wrong.
+        hand = lm["_hand"][side]
+        sh_pt = Vector((cx + sgn * lm["shoulder_half"], y_at(lm["z_shoulder"]),
+                        lm["z_shoulder"]))
+        sb = eb.get("shoulder." + side)
+        if sb:
+            sb.head = Vector((cx + sgn * lm["shoulder_half"] * 0.25,
+                              y_at(lm["z_shoulder"]), lm["z_shoulder"]))
+            sb.tail = sh_pt
+        if hand is None:
+            print(f"  (no hand found on {side}; arm left at default)")
+            continue
+        elbow_pt = sh_pt.lerp(hand, 0.45)
+        elbow_pt.y += (sh_pt - hand).length * bend
+        wrist_pt = sh_pt.lerp(hand, 0.88)
+        place("upper_arm." + side, sh_pt, elbow_pt)
+        place("forearm." + side, elbow_pt, wrist_pt)
+        hb = eb.get("hand." + side)
+        hand_delta = None
+        if hb:
+            hand_delta = wrist_pt - hb.head.copy()
+            hb.head = wrist_pt
+            hb.tail = hand
+        if hand_delta is not None:
+            # Fingers are separate bones, not children that follow their parent
+            # in edit mode, so move them by hand.
+            for b in eb:
+                if b.name.endswith("." + side) and (
+                        b.name.startswith(("thumb", "f_index", "f_middle",
+                                           "f_ring", "f_pinky", "palm"))):
+                    b.head = b.head + hand_delta
+                    b.tail = b.tail + hand_delta
+
+    if head_delta is not None:
+        face = ("brow", "lid", "cheek", "nose", "lip", "chin", "jaw", "ear",
+                "teeth", "tongue", "eye", "temple", "forehead")
+        for b in eb:
+            if b.name.startswith(face):
+                b.head = b.head + head_delta
+                b.tail = b.tail + head_delta
 
     bpy.ops.object.mode_set(mode="OBJECT")
-    print("snapped the main chain to measured heights; fingers, toes and face "
-          "bones left at Rigify's defaults")
+    print("fitted the spine, arms and legs to the measured body in all three "
+          "axes; fingers, toes and face bones translated with their parent but "
+          "not individually fitted")
 
 
 # ---------------------------------------------------------------- generate --
@@ -276,19 +605,43 @@ def cmd_pose(a):
 
     bpy.context.view_layer.objects.active = rig
     bpy.ops.object.mode_set(mode="POSE")
-    missing = []
+
+    # Rigify limbs default to IK. While a limb is in IK the FK controls are
+    # ignored, so a pose file full of *_fk rotations applies cleanly, saves
+    # without complaint, and moves nothing. Flip the per-limb IK_FK switch to
+    # FK unless asked not to.
+    if a.fk:
+        flipped = []
+        for pb in rig.pose.bones:
+            for key in ("IK_FK", "ik_fk", "IK/FK"):
+                if key in pb.keys():
+                    pb[key] = 1.0
+                    flipped.append(f"{pb.name}.{key}")
+        if flipped:
+            print(f"switched {len(flipped)} limbs to FK: {flipped}")
+
+    missing, applied = [], []
+    driven = []
     for name, rot in pose.items():
         pb = rig.pose.bones.get(name)
         if pb is None:
             missing.append(name)
             continue
+        if pb.constraints:
+            driven.append(name)
         pb.rotation_mode = "XYZ"
         pb.rotation_euler = tuple(math.radians(x) for x in rot)
+        applied.append(name)
     bpy.ops.object.mode_set(mode="OBJECT")
+    print(f"applied rotations to {len(applied)} bones")
     if missing:
         print(f"WARNING: no such bones: {missing}")
-        print("Rigify control bones are usually named like upper_arm_fk.L or "
-              "hand_ik.L; list them with --list.")
+        print("Rigify control bones are named like upper_arm_fk.L or hand_ik.L."
+              " Run `list` for the drivable ones.")
+    if driven:
+        print(f"WARNING: these bones are constraint-driven, so the rotations "
+              f"you set on them are overridden and nothing will move: {driven}")
+        print("Use the _fk or _ik control instead.")
     save(a.output)
 
 
@@ -296,10 +649,24 @@ def cmd_list(a):
     clear()
     bpy.ops.wm.open_mainfile(filepath=a.input)
     rig = the_armature()
-    names = sorted(b.name for b in rig.pose.bones)
-    print(f"{len(names)} pose bones in {rig.name}:")
-    for n in names:
+    print(f"{len(rig.pose.bones)} pose bones in {rig.name}"
+          f" (rig_id={rig.data.get('rig_id')})")
+    # A bone whose transform is driven by constraints ignores anything you set
+    # on it, so listing every bone equally sends you straight at the wrong ones.
+    free, driven = [], []
+    for b in sorted(rig.pose.bones, key=lambda b: b.name):
+        (driven if b.constraints else free).append(b.name)
+    print(f"\n-- drivable ({len(free)}): set rotations on these --")
+    for n in free:
         print(f"  {n}")
+    if a.all:
+        print(f"\n-- constraint-driven ({len(driven)}): rotating these does "
+              f"nothing --")
+        for n in driven:
+            print(f"  {n}")
+    else:
+        print(f"\n({len(driven)} constraint-driven bones hidden; --all shows "
+              f"them)")
 
 
 # -------------------------------------------------------------------- bake --
@@ -394,7 +761,21 @@ def main():
     m.add_argument("--snap", action="store_true", default=True,
                    help="move the main bone chain to measured heights")
     m.add_argument("--no-snap", dest="snap", action="store_false")
+    m.add_argument("--bend", type=float, default=0.05,
+                   help="joint pre-bend as a fraction of limb length; "
+                        "Rigify refuses a perfectly straight limb")
     m.set_defaults(fn=cmd_metarig)
+
+    pv = sub.add_parser("preview")
+    pv.add_argument("input")
+    pv.add_argument("prefix", nargs="?", default="bones")
+    pv.add_argument("--angles", type=lambda s: [int(x) for x in s.split(",")],
+                    default=[0, 90])
+    pv.add_argument("--bone-radius", type=float, default=0.006,
+                    help="as a fraction of figure height")
+    pv.add_argument("--ghost-alpha", type=float, default=0.18)
+    pv.add_argument("--outdir", default=None)
+    pv.set_defaults(fn=cmd_preview)
 
     g = sub.add_parser("generate")
     g.add_argument("input")
@@ -407,10 +788,14 @@ def main():
     po.add_argument("input")
     po.add_argument("output")
     po.add_argument("--pose", required=True, help="JSON of bone -> [rx,ry,rz]")
+    po.add_argument("--keep-ik", dest="fk", action="store_false",
+                    default=True,
+                    help="leave limbs in IK; FK rotations will be ignored")
     po.set_defaults(fn=cmd_pose)
 
     ls = sub.add_parser("list")
     ls.add_argument("input")
+    ls.add_argument("--all", action="store_true")
     ls.set_defaults(fn=cmd_list)
 
     b = sub.add_parser("bake")

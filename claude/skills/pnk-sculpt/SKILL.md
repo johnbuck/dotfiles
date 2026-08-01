@@ -36,6 +36,12 @@ expensive to fix, so each stage validates before handing on.
 
 Stages 5 and 6 are optional. A single-piece unposed figure goes 1-2-3-4-7.
 
+**If the figure will be posed, stage 5 splits around stage 6.** Fuse the body
+and head, rig, pose and bake, and only then add the base, any rigid props and
+the eyes. Automatic weights are assigned by proximity, so a plinth fused on
+before rigging gets weighted to the leg bones and is dragged into a warped
+sliver the moment a leg moves.
+
 Read the stage skill before running that stage. Each one carries the failure
 modes that stage actually hits, and most of them are counterintuitive enough
 that you will not guess them.

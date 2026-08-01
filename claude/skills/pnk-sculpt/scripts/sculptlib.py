@@ -62,9 +62,23 @@ def load(path):
             bpy.ops.import_mesh.ply(filepath=path)
     else:
         raise SystemExit(f"unsupported input: {path}")
-    meshes = [o for o in bpy.context.scene.objects if o.type == "MESH"]
+    return scene_meshes(path)
+
+
+def scene_meshes(what="the scene"):
+    """Mesh objects that can actually be selected.
+
+    A generated Rigify rig brings dozens of WGT-* control-shape meshes that live
+    in a hidden collection outside the view layer. They look like ordinary mesh
+    objects in `scene.objects`, and any attempt to select one raises
+    "cannot be selected because it is not in View Layer", which kills a render
+    of an otherwise fine posed figure.
+    """
+    in_layer = set(bpy.context.view_layer.objects)
+    meshes = [o for o in bpy.context.scene.objects
+              if o.type == "MESH" and o in in_layer]
     if not meshes:
-        raise SystemExit(f"no mesh objects in {path}")
+        raise SystemExit(f"no selectable mesh objects in {what}")
     return meshes
 
 
@@ -670,6 +684,9 @@ def export_mesh_file(obj, path):
 
 
 def save(path):
+    d = os.path.dirname(os.path.abspath(path))
+    if d:
+        os.makedirs(d, exist_ok=True)
     bpy.ops.wm.save_as_mainfile(filepath=path)
     print(f"saved {path}", flush=True)
     return path
