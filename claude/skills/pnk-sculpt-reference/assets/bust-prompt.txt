@@ -1,0 +1,51 @@
+Create a reference image of a BUST SCULPTURE of the character shown in the
+attached image, to be used as input to a 3D reconstruction. Keep the same
+character: the same face, the same hairstyle, the same colours, the same
+headwear and jewellery. Follow the technical requirements exactly.
+
+SUBJECT
+A complete, self-contained bust sculpture: head, neck, and the tops of the
+shoulders, resting on a simple round plinth. The whole sculpture including the
+plinth sits fully inside the frame with empty margin all around. This is a
+finished object photographed whole, not a portrait cropped at the chest.
+
+RENDER STYLE
+A 3D RENDER of a stylized sculpted bust, smooth clean sculpted surfaces, matte
+finish, gentle rounded forms. NOT photoreal, NOT an illustration, NO cel
+shading, NO ink outlines, NO skin pores, NO fine surface texture, NO fabric
+weave.
+
+LIGHTING
+Even, soft, diffuse light from the front and slightly above. No hard shadows, no
+strong specular highlights, no rim light, no coloured light.
+
+VIEW
+Facing the viewer straight on, head upright and level, chin neither raised nor
+lowered. The head fills most of the frame height.
+
+FORM REQUIREMENTS
+Hair as a few large smooth sculpted masses with simple carved parting lines,
+never individual strands, never fine flyaway hairs. Eyes WIDE OPEN with clearly
+sculpted upper and lower lids, a defined brow ridge and a rounded eyeball form
+that reads as an actual sphere in the socket. Ears clearly separated from the
+hair and the skull with visible background or shadowed gap around them. Any
+earrings or ornaments modelled as thick solid forms.
+
+BACKGROUND
+Plain, flat, mid-grey, completely empty. No environment, no cast shadow, no
+text.
+
+WHY THESE RULES
+This bust exists because in a full-body reference the head is only a few percent
+of the frame, so after the reconstructor downsamples its input the face has
+almost no pixels left and comes out as a blank mask. Reconstructing the head on
+its own gives the face the entire frame.
+
+Photoreal detail is actively harmful here: at bust scale, individual hair
+strands and skin texture land at voxel scale and the reconstructor turns them
+into tens of thousands of floating fragments rather than a surface. Smooth
+sculpted form reconstructs cleanly; a beautiful photoreal portrait does not.
+
+The plinth exists because a bust cropped by the frame edge forces the
+reconstructor to invent geometry along a hard straight line, which it does
+badly. A complete object with a visible base has no such edge.

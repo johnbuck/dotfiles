@@ -1,0 +1,53 @@
+{
+  "_comment": [
+    "Copy to ~/.config/pnk-sculpt/config.json and fill in your own values.",
+    "It lives outside this repo on purpose: hostnames and monitor ids are",
+    "site-specific and this repo is public.",
+    "",
+    "vram_guard is optional. Include it only if the GPU is normally occupied",
+    "by something you need to stop first, such as a resident language model.",
+    "Omit it entirely on a machine with a free GPU."
+  ],
+
+  "blender": "/usr/bin/blender",
+
+  "gpu": {
+    "host": "user@gpu-host",
+    "index": 0
+  },
+
+  "trellis": {
+    "runtime": "/path/to/trellis/runtime",
+    "weights": "/path/to/models/trellis",
+    "io": "/path/to/trellis"
+  },
+
+  "vram_guard": {
+    "compose_dir": "~/Docker/llama-cpp",
+    "service": "llama-cpp",
+    "health_url": "http://127.0.0.1:8001/health",
+    "monitors": [],
+    "_monitors_comment": [
+      "Uptime-monitor ids to pause before a run and resume after.",
+      "trellis.py does NOT touch these: pause them yourself through your",
+      "monitoring tool, because a script that silences alerts and then dies",
+      "leaves them silenced."
+    ]
+  },
+
+  "openrouter": {
+    "key_env": "OPENROUTER_API_KEY",
+    "key_command": null,
+    "_key_command_comment": [
+      "A shell command whose stdout is the key, e.g. a secret-manager fetch.",
+      "genref.py captures it and never prints it. Do not put the key itself",
+      "in this file."
+    ],
+    "image_model": "google/gemini-3-pro-image"
+  },
+
+  "defaults": {
+    "scale_preset": "display",
+    "projects_dir": "~/sculpt-projects"
+  }
+}

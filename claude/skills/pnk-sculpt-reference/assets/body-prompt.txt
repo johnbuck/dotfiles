@@ -1,0 +1,49 @@
+Create a single reference image of the following character, to be used as input
+to a photogrammetry-style 3D reconstruction. Follow the technical requirements
+exactly; they matter more than artistic flair.
+
+CHARACTER
+{CHARACTER}
+
+RENDER STYLE
+A 3D RENDER of a stylized video-game character model, as if a finished model
+were rendered in Blender or ZBrush. Smooth sculpted forms with clear volume.
+Matte, slightly rough surfaces. NOT an illustration, NOT concept art, NOT cel
+shaded, NO ink outlines, NO painterly brushwork, NO flat colour fills.
+
+LIGHTING
+Even, soft, diffuse studio light from the front and slightly above, with gentle
+wraparound fill so that every surface is legible. No hard rim light, no strong
+specular highlights, no coloured gels, no dramatic shadows, no glow or bloom.
+
+POSE
+Relaxed A-pose, facing the viewer straight on, standing upright, weight even on
+both feet. Arms held clearly away from the torso with a wide, obvious gap of
+empty background visible between each arm and the body. Legs slightly apart with
+background visible between them. Both hands empty and open, fingers relaxed and
+slightly separated.
+
+FRAMING
+The complete figure from the top of the head to below the feet, entirely inside
+the frame with a margin of empty space on all four sides. Nothing cropped by the
+edge. The figure fills most of the frame vertically.
+
+BACKGROUND
+Plain, flat, mid-grey, completely empty. No floor, no ground plane, no cast
+shadow, no contact shadow, no environment, no props, no text, no watermark.
+
+FORM REQUIREMENTS
+Hair as simple solid sculpted masses and lobes, never individual strands or
+wisps. Cloth as thick, solid, sculpted folds, never thin flapping fabric. No
+loose straps, ribbons, tassels, chains, cords or strings anywhere. No held
+weapons, no held tools, no held objects of any kind. Eyes wide open with clearly
+readable eyelids and a defined brow. Every feature carved as real three
+dimensional relief rather than painted on.
+
+WHY THESE RULES
+The reconstructor infers depth from shading, so flat or outlined art gives it
+almost nothing to work with. It resolves volume, so anything thinner than a few
+millimetres at final scale comes out broken or missing. It cannot see through
+the figure, so limbs touching the torso fuse into one mass. And it invents
+whatever the single view does not show, so a hard crop at the frame edge becomes
+an invented flat wall.
