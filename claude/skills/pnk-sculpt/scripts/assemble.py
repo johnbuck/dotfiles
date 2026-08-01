@@ -611,6 +611,18 @@ def cmd_transfer(a):
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     print(f"donor scaled x{s:.4f} and aligned to the body's head")
 
+    if a.donor_voxel:
+        # Band-limit the donor to the resolution the figure will actually keep.
+        # Two failures come from skipping this, and both are ugly. Shrinkwrap
+        # sends neighbouring source vertices to DIFFERENT sub-resolution ridges,
+        # which zigzags; and any ridge finer than the later fuse voxel is broken
+        # into fragments by that remesh, so a transferred head arrives with its
+        # hair shattered while still reporting itself watertight.
+        print(f">> smoothing the donor to voxel {a.donor_voxel} so nothing "
+              f"finer than the figure can carry survives", flush=True)
+        voxel_remesh(donor, a.donor_voxel)
+        donor, _ = keep_largest_component(donor, "Donor")
+
     # Weight the influence: full over the head, ramping to nothing by the neck,
     # and zero anywhere outside the neck cylinder so pauldrons are untouched.
     vg = body.vertex_groups.new(name="head_transfer")
@@ -630,16 +642,38 @@ def cmd_transfer(a):
         moved += 1
     print(f"weighted {moved} body vertices, full influence above z={z1:.4f}")
 
-    m = body.modifiers.new("headfit", "SHRINKWRAP")
-    m.target = donor
-    m.wrap_method = a.method
-    m.vertex_group = vg.name
-    if a.method == "PROJECT":
-        m.use_negative_direction = True
-        m.use_positive_direction = True
-        m.subsurf_levels = 0
-    bpy.context.view_layer.objects.active = body
-    bpy.ops.object.modifier_apply(modifier=m.name)
+    # Wrap by hand rather than with the Shrinkwrap modifier, because the
+    # modifier has no distance limit. On a donor with undercuts (a hairline, a
+    # brow ridge) nearest-surface sends neighbouring source vertices onto
+    # OPPOSITE walls of the same crease, the surface folds through itself, and
+    # the later remesh turns those folds into shrapnel. Clamping how far any one
+    # vertex may travel makes that impossible: a vertex can be pulled toward a
+    # crease but never through it.
+    bvh = bvh_for(donor)
+    limit = a.max_move * b["height"]
+    mw = body.matrix_world
+    inv = mw.inverted()
+    clamped = 0
+    for v in body.data.vertices:
+        w = 0.0
+        for g in v.groups:
+            if g.group == vg.index:
+                w = g.weight
+                break
+        if w <= 0.0:
+            continue
+        p_world = mw @ v.co
+        loc, nor, idx, dist = bvh.find_nearest(p_world)
+        if loc is None:
+            continue
+        delta = loc - p_world
+        if delta.length > limit:
+            delta = delta.normalized() * limit
+            clamped += 1
+        v.co = inv @ (p_world + delta * w)
+    body.data.update()
+    print(f"wrapped, clamping {clamped} vertices at {limit:.4f} "
+          f"({a.max_move * 100:.0f}% of head height)")
     bpy.data.objects.remove(donor, do_unlink=True)
 
     if a.smooth:
@@ -731,12 +765,15 @@ def main():
     st.add_argument("--neck-hi", type=float, default=0.92)
     st.add_argument("--donor-neck-lo", type=float, default=0.25)
     st.add_argument("--donor-neck-hi", type=float, default=0.75)
+    st.add_argument("--donor-voxel", type=float, default=0.0,
+                    help="remesh the donor to this voxel first; set it to the "
+                         "voxel the figure will be fused at")
     st.add_argument("--blend", type=float, default=0.35,
                     help="fraction of head height over which influence ramps up")
-    st.add_argument("--method", default="NEAREST_SURFACEPOINT",
-                    choices=("NEAREST_SURFACEPOINT", "PROJECT",
-                             "NEAREST_VERTEX"))
-    st.add_argument("--smooth", type=int, default=1)
+    st.add_argument("--max-move", type=float, default=0.10,
+                    help="cap on vertex travel as a fraction of head "
+                         "height; stops folding into undercuts")
+    st.add_argument("--smooth", type=int, default=3)
     st.add_argument("--offset", type=floats, default=(0, 0, 0))
     st.add_argument("--yaw", type=float, default=0.0)
     st.set_defaults(fn=cmd_transfer)
