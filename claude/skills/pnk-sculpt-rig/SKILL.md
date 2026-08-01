@@ -27,6 +27,26 @@ re-close to a solid. Topology does not matter because nothing will deform it
 again. For a game asset the rig is the deliverable: face count matters, UVs and
 materials must survive, watertightness stops mattering entirely.
 
+## The face and finger rigs are stripped, and should stay stripped
+
+Rigify's human metarig ships about 92 face bones and 38 finger bones. This
+pipeline fits the spine, arms and legs to the mesh but cannot fit those: there
+is no way to find a lip corner or a knuckle on a voxel-remeshed sculpt. They are
+only translated along with the head or hand they belong to.
+
+That is harmless while they are just bones and destructive the moment automatic
+weights bind real geometry to them. On the first validated run an 18-degree
+spine twist was enough to tear the face apart: the forehead caved in, the brow
+smeared into strands, the eye sockets collapsed. Nothing was rotating those
+bones; simply having badly-placed bones own that geometry was sufficient.
+
+So `metarig` removes both sub-rigs by default and says so. `--face` and
+`--fingers` keep them, and if you use either, place those bones in the GUI
+before generating or you will get the same result.
+
+A print pose needs neither. Expression and finger articulation are for animated
+assets, and an animated asset should not be built on voxel topology anyway.
+
 ## Rig BEFORE the base is fused on
 
 This changes stage 5's order and it is not optional. Automatic weights are

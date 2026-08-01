@@ -334,6 +334,8 @@ def cmd_metarig(a):
 
     if a.snap:
         snap_metarig(meta, lm, bend=a.bend)
+    strip_unfitted(meta, drop_face=not a.face,
+                   drop_fingers=not a.fingers)
 
     save(a.output)
     print("\nNEXT: look at it before generating, with\n"
@@ -421,6 +423,62 @@ def cmd_preview(a):
     print("\nCheck: knees at the knees, hip above the crotch, shoulders inside "
           "the deltoids, and the spine following the actual back rather than a "
           "straight vertical line.")
+
+
+def strip_subtree(eb, root_name):
+    """Delete a bone and everything descended from it.
+
+    Removing a parent on its own is not enough: Blender reparents the orphans
+    to their grandparent, so the sub-rig survives in mangled form.
+    """
+    root = eb.get(root_name)
+    if root is None:
+        return 0
+    doomed, stack = [], [root]
+    while stack:
+        b = stack.pop()
+        doomed.append(b)
+        stack.extend(b.children)
+    for b in doomed:
+        eb.remove(b)
+    return len(doomed)
+
+
+def strip_unfitted(meta, drop_face=True, drop_fingers=True):
+    """Remove the sub-rigs this pipeline cannot fit to the mesh.
+
+    Face and finger bones are placed by Rigify's own defaults and only
+    translated with their parent here, never fitted. That is harmless while they
+    are just bones, and destructive the moment automatic weights bind real
+    geometry to them: on the first validated run the generated face rig tore the
+    figure's face apart, caving in the forehead and smearing the brow into
+    strands, from nothing more than an 18-degree spine twist.
+
+    A print pose needs neither. Strip them unless someone explicitly wants a
+    face or hand rig and is prepared to place those bones by hand.
+    """
+    bpy.context.view_layer.objects.active = meta
+    bpy.ops.object.mode_set(mode="EDIT")
+    eb = meta.data.edit_bones
+    removed = 0
+    if drop_face:
+        n = strip_subtree(eb, "face")
+        removed += n
+        print(f"stripped {n} unfitted face bones")
+    if drop_fingers:
+        n = 0
+        for side in ("L", "R"):
+            for root in ("palm.01", "palm.02", "palm.03", "palm.04",
+                         "thumb.01"):
+                n += strip_subtree(eb, f"{root}.{side}")
+        removed += n
+        print(f"stripped {n} unfitted finger bones")
+    bpy.ops.object.mode_set(mode="OBJECT")
+    if removed:
+        print("These sub-rigs are removed because they were never fitted to "
+              "this mesh. Pass --face / --fingers to keep them, and place them "
+              "in the GUI before generating.")
+    return removed
 
 
 def snap_metarig(meta, lm, bend=0.05):
@@ -761,6 +819,11 @@ def main():
     m.add_argument("--snap", action="store_true", default=True,
                    help="move the main bone chain to measured heights")
     m.add_argument("--no-snap", dest="snap", action="store_false")
+    m.add_argument("--face", action="store_true",
+                   help="keep Rigify's face rig; it is NOT fitted and will "
+                        "tear the face apart under automatic weights")
+    m.add_argument("--fingers", action="store_true",
+                   help="keep finger bones; also unfitted")
     m.add_argument("--bend", type=float, default=0.05,
                    help="joint pre-bend as a fraction of limb length; "
                         "Rigify refuses a perfectly straight limb")
