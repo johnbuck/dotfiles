@@ -88,6 +88,28 @@ A coarse remesh that bridges fragments is worth one attempt and rarely works. On
 a 592-component head, remeshing coarsely left a 14k-face lump of what should
 have been 240k. When that happens, re-reconstruct rather than salvage.
 
+## Reducing face count without resampling
+
+```bash
+$B $S/mesh.py -- decimate work/figure.blend work/fig_d.blend --faces 660000 --height-mm 250
+```
+
+Two things reduce a face count and they are not interchangeable. A **voxel
+remesh** rebuilds the surface on a grid, so anything finer than the voxel is
+destroyed, not smoothed. **Decimation** collapses edges, so the silhouette and
+every fine feature survive; what it costs is smoothness, because it leaves long
+thin triangles. On the plate knight, 1.13M down to 847k moved p95 dihedral from
+21.3 to 27.8 and changed nothing visible in a clay render.
+
+Use this when a later step needs a lighter mesh but the detail has to survive:
+in practice, before `assemble.py eyes`, whose booleans collapse on a very dense
+mesh. Reverted automatically if it breaks watertightness, so the mesh you get
+back is always printable.
+
+The collapse decimator will not always hit the target on a dense triangle mesh.
+Asking for 660k landed at 847,500; asking for 450k landed at 638,632. Ask lower
+than you need and read what you actually got.
+
 ## Measure the figure
 
 ```bash

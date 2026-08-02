@@ -273,8 +273,47 @@ def cmd_base(a):
     base.name = "Base"
     if a.bevel_mm:
         add_modifier_apply(base, "BEVEL", width=a.bevel_mm * mm, segments=3)
+
+    if a.recess:
+        # Printing the plinth as its own part is usually better than fusing it:
+        # the fuse remesh resamples the WHOLE figure and shatters any feature
+        # finer than the voxel. But two flat-mating parts have nothing to align
+        # them, so cut the figure's own footprint into the plinth top and let
+        # the figure key itself. Dilate the cutter along its normals first: a
+        # zero-clearance socket does not accept the part once the printer has
+        # over-extruded and the resin has swelled.
+        cutter = obj.copy()
+        cutter.data = obj.data.copy()
+        bpy.context.scene.collection.objects.link(cutter)
+        cutter.name = "Recess"
+        if a.clearance_mm:
+            add_modifier_apply(cutter, "DISPLACE", mid_level=0.0,
+                               strength=a.clearance_mm * mm)
+        boolean(base, cutter, "DIFFERENCE")
+        print(f"  recess cut at {a.clearance_mm} mm clearance, "
+              f"base now {len(base.data.polygons)} faces")
+        # Armour reconstructs as thin hollow lames, so a sabaton is a shell
+        # rather than a solid. Differencing it leaves the plinth material that
+        # sat INSIDE the boot outline as a free-floating plug: on the knight,
+        # two 6k-face islands 1.9 mm thick. They would print as loose slivers
+        # and they occupy the space the boot has to enter, so anything the
+        # recess isolates is by definition unwanted.
+        base, dropped = keep_largest_component(base, "Base")
+        if dropped:
+            print(f"  dropped {dropped} island(s) isolated inside the recess; "
+                  f"base now {len(base.data.polygons)} faces")
+        h = health(base)
+        if not is_watertight(h) or h["components"] != 1:
+            raise SystemExit(
+                f"recess left the plinth unprintable: comps={h['components']} "
+                f"nm={h['non_manifold_edges']} bnd={h['boundary_edges']}")
+
     save(a.output)
-    print("Base added as a separate object. Run `fuse` to merge it.")
+    if a.recess:
+        print("Base added as a separate KEYED object. Export it as its own "
+              "part; do NOT fuse it.")
+    else:
+        print("Base added as a separate object. Run `fuse` to merge it.")
 
 
 # -------------------------------------------------------------------- fuse --
@@ -505,9 +544,15 @@ def cmd_eyes(a):
         boolean(obj, c, "DIFFERENCE")
     check("apertures carved", obj, a.height_mm)
 
-    # 2. set the eyeballs. JOIN, do not boolean-union: a UNION against a mesh
-    # that has just been cut collapsed a 1,432,069-face figure to 1,575. The
-    # remesh below fuses them, the same trick the head graft uses.
+    # 2. set the eyeballs.
+    #
+    # JOIN is the default because a UNION against a mesh that has just been cut
+    # collapsed a 1,432,069-face figure to 1,575 faces. But join leaves three
+    # separate shells, which is three separate printed parts, so something has
+    # to close them afterwards: either --refuse-voxel, which remeshes the WHOLE
+    # figure and costs every fine feature on it, or --union, which is local.
+    # Prefer --union when the mesh is small enough to survive it; the collapse
+    # guard turns the failure into an error rather than silent destruction.
     balls = []
     for side, dx in (("L", -a.dx), ("R", +a.dx)):
         sy = depth[side]
@@ -517,15 +562,33 @@ def cmd_eyes(a):
         s = bpy.context.view_layer.objects.active
         s.name = f"Eye{side}"
         balls.append(s)
-    bpy.ops.object.select_all(action="DESELECT")
-    for s in balls:
-        s.select_set(True)
-    obj.select_set(True)
-    bpy.context.view_layer.objects.active = obj
-    bpy.ops.object.join()
-    obj = bpy.context.view_layer.objects.active
-    obj.name = "Figure"
-    check("eyeballs joined", obj, a.height_mm)
+
+    if a.union:
+        for s in balls:
+            try:
+                boolean(obj, s, "UNION")
+            except BooleanCollapse as e:
+                raise SystemExit(
+                    f"{e}\nThe figure is too dense for a local union. Decimate "
+                    f"it first with `mesh.py decimate`, or fall back to "
+                    f"--refuse-voxel and accept the resampling.")
+        weld(obj)
+        obj.name = "Figure"
+        h = check("eyeballs unioned", obj, a.height_mm)
+        if h["components"] != 1:
+            raise SystemExit(
+                f"union left {h['components']} shells; the eyeball is not "
+                f"touching the lid. Raise --radius-mm or lower --set-mm.")
+    else:
+        bpy.ops.object.select_all(action="DESELECT")
+        for s in balls:
+            s.select_set(True)
+        obj.select_set(True)
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.object.join()
+        obj = bpy.context.view_layer.objects.active
+        obj.name = "Figure"
+        check("eyeballs joined", obj, a.height_mm)
 
     # The boolean leaves a few non-manifold edges where sphere meets lid.
     # Re-remeshing at the SAME voxel the figure was fused at restores a closed
@@ -788,6 +851,14 @@ def main():
                     help="how far the feet sink into the plinth")
     s3.add_argument("--centre", type=floats, default=(0.0, 0.0))
     s3.add_argument("--segments", type=int, default=128)
+    s3.add_argument("--recess", action="store_true",
+                    help="cut the figure's footprint into the plinth top so "
+                         "the two key together as SEPARATELY PRINTED parts. "
+                         "Use instead of fuse when the fuse remesh would "
+                         "damage the figure.")
+    s3.add_argument("--clearance-mm", type=float, default=0.2,
+                    help="how far the recess is cut oversize; 0.15-0.25 is the "
+                         "useful range for resin")
     s3.set_defaults(fn=cmd_base)
 
     s4 = common(sub.add_parser("fuse"))
@@ -835,6 +906,11 @@ def main():
                     help="tight: wide sampling catches the brow and nose")
     s6.add_argument("--refuse-voxel", type=float, default=0.0,
                     help="re-remesh at the figure's fuse voxel to reclose it")
+    s6.add_argument("--union", action="store_true",
+                    help="boolean-union the eyeballs into the face instead of "
+                         "joining them as loose shells. Local, so it costs no "
+                         "surface detail, but it collapses on a mesh much "
+                         "above 700k faces. Use INSTEAD of --refuse-voxel.")
     s6.set_defaults(fn=cmd_eyes)
 
     a = p.parse_args(argv())

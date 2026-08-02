@@ -298,6 +298,37 @@ Known cost: an exact union leaves a handful of non-manifold edges at the seam
 that `fill_holes` does not clear. That is an open problem, recorded in the
 homelab backlog under assembly hardening.
 
+### Better still: do not attach the base at all
+
+```bash
+$B $S/assemble.py -- base work/figure.blend work/keyed_base.blend \
+   --radius-mm 48 --thickness-mm 8 --sink-mm 3 --bevel-mm 1.5 \
+   --recess --clearance-mm 0.2 --height-mm 250
+```
+
+`--recess` cuts the figure's own footprint into the plinth top and leaves the
+two as **separately printed parts that key together**. Nothing touches the
+figure at all: no remesh, no seam, no non-manifold edges. A plinth is a separate
+part in most miniature workflows anyway, and stage 7 exports it as one. On the
+plate knight the fit came out at 1 interfering vertex in 15,115.
+
+Two things it will catch you on, both measured on that figure:
+
+- **Size the disc off the real footprint, not the figure's width.** At 34 mm
+  radius the boots ran past the rim and the recess cut the disc into three
+  pieces. A vertex scan below the ankles gave 73.2 x 50.9 mm, extreme radius
+  36.6 mm, so 48 mm was the first comfortable disc.
+- **Armour is hollow, so the recess isolates a plug.** A reconstructed sabaton
+  is a thin lame, not a solid, so differencing it leaves the plinth material
+  inside the boot outline free-floating: two islands, 6.2k faces each, 1.9 mm
+  thick. `base --recess` drops whatever the recess isolates, then refuses to
+  save unless the result is one watertight shell.
+
+Export the base with `--height-mm` set to **the plinth's own height in the
+figure's frame**, not the figure's height. `export` scales an object so its own
+height matches the number given, so the plinth's own height is what puts both
+parts at one consistent scale.
+
 Verify before going on:
 
 ```bash
@@ -307,13 +338,31 @@ python3 $S/sheet.py renders/fig_sheet.png renders/fig_{front,q45,side,back}.png
 
 ## Eyes
 
-**Precondition: run this on a mesh under about 700k faces.** The aperture is cut
-with an exact DIFFERENCE, and above roughly that size the solver stops editing
-the mesh and consumes it instead. Measured, reproducibly: a 1,134,577-face
-figure came back as 594 faces. `sculptlib.boolean` now catches that and restores
-the mesh, so the failure is loud rather than silent, but the operation still
-does not happen. Run `eyes` after the fuse, which brings the count down, or
-decimate a working copy first.
+**Precondition: run this on a mesh under about 850k faces.** Both booleans here
+are exact, and past some size the solver stops editing the mesh and consumes it
+instead. `sculptlib.boolean` catches that and restores the mesh, so the failure
+is loud rather than silent, but the operation still does not happen.
+
+Measured on one figure, so treat the boundary as a rough guide and not a
+constant:
+
+| Faces | Aperture DIFFERENCE | Eyeball UNION |
+|---|---|---|
+| 1,134,577 | succeeds, leaves 184 non-manifold edges | **collapses to 18 faces** |
+| 847,500 | clean | clean |
+| 638,632 | clean | clean |
+
+If the mesh is too dense, bring it down with **`mesh.py decimate`, not a voxel
+remesh**. Decimation costs surface smoothness and keeps the silhouette; a remesh
+resamples every feature on the figure and is what shredded the transferred
+hairline.
+
+```bash
+$B $S/mesh.py -- decimate work/figure.blend work/fig_d.blend --faces 660000 --height-mm 250
+```
+
+The collapse decimator will not always reach the target on a dense triangle
+mesh, and that is fine: asking for 660k landed at 847,500, which worked.
 
 Image-to-3D cannot produce open eyes. It carves a shallow slit where the lids
 meet and leaves the socket flat, so the face reads as asleep at any
@@ -355,7 +404,7 @@ Then place them:
 $B $S/assemble.py -- eyes work/figure.blend work/figure_eyes.blend \
    --at-z 0.4694 --centre-x 0.0085 --dx 0.0205 \
    --aperture-w-mm 2.0 --aperture-h-mm 1.05 --aperture-d-mm 1.2 \
-   --radius-mm 1.55 --set-mm 1.9 --refuse-voxel 0.0014 --height-mm 200
+   --radius-mm 1.55 --set-mm 1.9 --union --height-mm 200
 ```
 
 Four things decide whether this reads as an eye or as a deformity:
@@ -376,10 +425,28 @@ Four things decide whether this reads as an eye or as a deformity:
 Expect to iterate on `--at-z` and `--dx` against an ortho render. Being 0.8 mm
 high puts the eyes on the brow.
 
-`--refuse-voxel` should be the figure's fuse voxel. The spheres are **joined,
-not boolean-unioned**: a UNION against a mesh that has just been cut collapsed a
-1,432,069-face figure to 1,575 faces. The remesh fuses them and recloses the
-solid without changing its effective resolution.
+### Closing the eyeballs into the figure: use `--union`
+
+The eyeballs arrive as separate shells sitting in the sockets, which is three
+printed parts, so something has to close them. There are two ways and they are
+not equivalent.
+
+**`--union` (prefer this).** A local boolean per eyeball. Costs 2,744 faces and
+touches nothing else on the figure. It collapses on a very dense mesh, which is
+why the face-count precondition above exists, but the collapse guard makes that
+an error rather than silent destruction.
+
+**`--refuse-voxel` (fallback).** Remeshes the *whole figure* at the given voxel.
+It always works and it always costs every feature finer than that voxel — on the
+plate knight that meant the transferred hairline. Reach for it only when the
+mesh is too dense to union and too fragile to decimate.
+
+The default is still a plain join with neither, which leaves three shells. That
+is deliberate: it fails the print gate loudly rather than quietly picking one of
+the two costs for you.
+
+If `--union` reports more than one shell afterwards, the eyeball is not touching
+the lid. Raise `--radius-mm` or lower `--set-mm`.
 
 ## Verification discipline
 

@@ -52,6 +52,36 @@ near-zero and the check is worthless. A p01 close to the floor is worth looking
 at rather than accepting: it usually points at one specific feature, like a cape
 edge or a sash tip.
 
+### Read the clustering line before you react
+
+The gate reports where the thin samples sit, and that decides which failure you
+have:
+
+- **"clustered: likely one specific feature"** — one fragile thing. Look at it.
+  It is usually a cape hem, a sash tip or the hair, and you can often fix it
+  alone.
+- **"spread over the whole figure: this is surface detail"** — the model is
+  simply finer than the floor everywhere.
+
+On the plate knight, 46 of the 48 thinnest samples sat between 90% and 100% of
+height within 12 mm of the midline: the hair on the crown, and nothing else. The
+median wall was 0.927 mm and the armour was fine.
+
+### A passing gate is not always the better mesh
+
+That knight's *first* export passed at 0.826 mm. It passed because it had been
+voxel-remeshed at 0.0022, and a remesh cannot produce a feature thinner than its
+voxel. It passed by having already destroyed the detail.
+
+The re-export from the detail-transferred mesh fails at 0.108 mm, and is the
+better model by every other measure. Sub-floor **surface detail** prints soft
+rather than crisp; sub-floor **structure** breaks or fails to form. The gate
+cannot tell those apart, which is what the clustering line is for.
+
+So `--force` is legitimate here, on two conditions: you have identified the
+feature, and you write down in `AS-BUILT.md` what will print soft. Forcing
+without naming the feature is just ignoring the gate.
+
 ### When the gate fails
 
 - **Holes**: back to stage 4. Re-clean, usually one voxel step coarser.

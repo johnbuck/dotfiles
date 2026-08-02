@@ -98,6 +98,33 @@ def cmd_clean(a):
         sys.exit(2)
 
 
+# ---------------------------------------------------------------- decimate --
+
+def cmd_decimate(a):
+    """Reduce face count WITHOUT resampling the surface.
+
+    Reach for this when a later step needs a lighter mesh but the detail must
+    survive. A voxel remesh at a coarse enough setting will also reduce the
+    count, and it destroys anything finer than the voxel: it is what shattered
+    a transferred head's hairline into fragments while still reporting the mesh
+    watertight and single-shell.
+
+    The usual caller is `assemble.py eyes`, whose aperture boolean collapses on
+    a mesh much above 700k faces. Collapse-decimating to fit is a far smaller
+    loss than remeshing to fit.
+    """
+    clear()
+    obj = load_one(a.input, "Figure")
+    check("in", obj, a.height_mm)
+    obj, status = decimate_safely(obj, a.faces)
+    if status == "reverted":
+        raise SystemExit(
+            "decimation broke watertightness and was reverted; the mesh is "
+            "unchanged. Try a higher --faces, or clean at a coarser voxel.")
+    check("out", obj, a.height_mm)
+    save(a.output)
+
+
 # --------------------------------------------------------------- landmarks --
 
 def cmd_landmarks(a):
@@ -448,6 +475,13 @@ def main():
     a2.add_argument("--decimate", type=int, default=0,
                     help="target face count; reverted if it breaks watertightness")
     a2.set_defaults(fn=cmd_clean)
+
+    ad = common(sub.add_parser("decimate"))
+    ad.add_argument("input")
+    ad.add_argument("output")
+    ad.add_argument("--faces", type=int, required=True,
+                    help="target face count; reverted if it breaks watertightness")
+    ad.set_defaults(fn=cmd_decimate)
 
     a3 = common(sub.add_parser("landmarks"))
     a3.add_argument("input")
