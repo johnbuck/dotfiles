@@ -27,8 +27,15 @@ The operator should not have to answer technical questions. Read
 - Script or small tool: Python (CLI uses Typer).
 - Data: start with a SQLite file in the project folder. Move to the shared Postgres only when SQLite is not enough.
 
-If the project fits none of these, default to Python. Only ask with the `question`
-tool if a real choice changes what gets built.
+If the project fits none of these, default to Python.
+
+Never ask a technical question to fill a gap the preferences do not cover. That includes
+architecture: how data gets fetched, stored, refreshed, or scheduled, and how the project
+is laid out. Pick the simpler option, then say in one line what you picked and why, so the
+operator can correct it later.
+
+The `question` tool is for what the thing should do and how it should behave, never for
+how it is built.
 
 ## 3. Build it self-contained and portable
 

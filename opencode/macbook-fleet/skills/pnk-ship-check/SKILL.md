@@ -40,7 +40,10 @@ When you finish, the project should start cleanly with `docker compose up` (or E
 for mobile) with no manual patching. Confirm the commit history reflects what you
 did.
 
-## 5. Say what you verified, in plain words
+## 5. Leave it running, then say what you verified
 
-Tell the operator what you ran, what you saw, and how they can check it themselves.
-See the `pnk-explain` skill for how to phrase that.
+If the operator will want to look at it, leave it up and give them the address to open.
+Do not stop at "here is the command to start it". You start it.
+
+Tell them what you ran, what you saw, and what they should see on screen. Never hand them
+a command to type. See the `pnk-explain` skill for how to phrase that.

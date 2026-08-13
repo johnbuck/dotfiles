@@ -22,6 +22,9 @@ for themselves that it worked. For example: "The app now saves your notes. Open 
 type a note, refresh the page, and it should still be there." Give them a concrete
 thing to look at, not just your word for it.
 
+Start it yourself before you say this, and give them an address to open. Never leave them
+a command to type.
+
 ## 3. Never make them feel they should already know
 
 Skip the jargon, or explain a word the first time you use it in a short aside.
