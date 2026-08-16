@@ -8,7 +8,9 @@ carrying between machines. **Contains no secrets, credentials, or session histor
 | Path | What it is |
 |------|------------|
 | [`../secrets-guard/`](../secrets-guard/README.md) | The shared secret-leak guard (core + adapters). `install.sh` delegates to `../secrets-guard/install.sh`, which deploys the pi adapter + core into `~/.pi/agent/extensions/` (auto-discovered globally, no trust gate). |
+| `extensions/cognee-first.ts` | **cognee-first**, two layers. `before_agent_start` appends the recall-first rule to every turn's system prompt; a `tool_call` gate blocks the session's *first* research tool call unless recall already ran — one block per session, fail-open, and `pi-subagents` children skip the gate (the parent already paid it). Twins ship for Claude Code (`../claude/hooks/cognee-{remind,gate}.sh`) and OpenCode (`../opencode/plugins/pnk-cognee-first.js`). |
 | `mcp.json.example` | MCP server template (magellan, cognee, uptime-kuma, playwright, serena). `__HOME__`/`__MCP_HOST__` tokens + `${COGNEE_MCP_TOKEN}` env ref — no secrets or topology. |
+| `settings.json.example` | The npm package list pi loads (`pi-mcp-adapter`, `pi-permission-system`, `gentle-pi`, `pi-web-access`, `pi-subagents`, `rpiv-ask-user-question`) plus the default provider/model. Copy to `~/.pi/agent/settings.json` and adjust. `install.sh` does **not** write it — the default provider/model is per-machine. Restoring this list is what brings back gentle-pi's managed `agents/` and `chains/`, which pi regenerates on start and which are therefore not vendored here. |
 | `install.sh` | Deploys `extensions/` + `mcp.json` into `~/.pi/agent/`, backing up anything it overwrites. |
 
 ## What the guard blocks
@@ -40,8 +42,8 @@ Never committed (and never touched by `install.sh`) — these stay per-machine:
 git clone https://github.com/johnbuck/dotfiles ~/dotfiles
 cd ~/dotfiles
 git config core.hooksPath hooks    # turn on the repo's secret-scan hook
-# MCP servers need the LAN addr of the host running them (wiley):
-MCP_HOST=<wiley-lan-addr> ./pi/install.sh
+# MCP servers need the LAN addr of the host running them:
+MCP_HOST=<mcp-host-lan-addr> ./pi/install.sh
 # (without MCP_HOST, mcp.json is skipped — copy mcp.json.example by hand instead)
 ```
 

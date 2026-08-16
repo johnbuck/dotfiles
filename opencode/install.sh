@@ -25,8 +25,9 @@ backup_if_exists() {
 
 say "Installing into $DEST (backups -> $BACKUP)"
 
-# Top-level config files
-for f in opencode.json oh-my-openagent.json; do
+# Top-level config files. AGENTS.md is the global steering file — the static twin of
+# the cognee-first plugin's reminder; opencode reads it every session.
+for f in opencode.json oh-my-openagent.json AGENTS.md; do
   backup_if_exists "$DEST/$f"
   cp "$REPO/$f" "$DEST/$f"
 done

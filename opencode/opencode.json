@@ -128,6 +128,14 @@
     }
   },
   "mcp": {
+    "cognee": {
+      "type": "remote",
+      "url": "http://__MCP_HOST__:8418/mcp",
+      "headers": {
+        "Authorization": "Bearer {file:~/.config/opencode/secrets/cognee-mcp-bearer}"
+      },
+      "enabled": true
+    },
     "memory": {
       "type": "remote",
       "url": "http://__MCP_HOST__:8404/mcp",

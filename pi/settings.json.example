@@ -1,0 +1,12 @@
+{
+  "packages": [
+    "npm:pi-mcp-adapter",
+    "npm:@gotgenes/pi-permission-system",
+    "npm:gentle-pi@0.14.0",
+    "npm:pi-web-access",
+    "npm:pi-subagents",
+    "npm:@juicesharp/rpiv-ask-user-question"
+  ],
+  "defaultProvider": "zai",
+  "defaultModel": "glm-5.2"
+}

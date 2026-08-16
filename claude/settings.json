@@ -1,5 +1,5 @@
 {
-  "cleanupPeriodDays": 7,
+  "cleanupPeriodDays": 14,
   "includeCoAuthoredBy": false,
   "permissions": {
     "allow": [
@@ -178,6 +178,25 @@
             "command": "__HOME__/.local/bin/serena-hooks auto-approve --client=claude-code"
           }
         ]
+      },
+      {
+        "matcher": "Grep|Glob|Read|Bash|WebFetch|WebSearch|mcp__cognee__recall|mcp__cognee__remember",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash __HOME__/.claude/hooks/cognee-gate.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__HOME__/.claude/hooks/spec-standard-reminder.sh",
+            "statusMessage": "Checking spec standard..."
+          }
+        ]
       }
     ],
     "SessionStart": [
@@ -198,6 +217,17 @@
           {
             "type": "command",
             "command": "__HOME__/.local/bin/serena-hooks cleanup --client=claude-code"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash __HOME__/.claude/hooks/cognee-remind.sh"
           }
         ]
       }
