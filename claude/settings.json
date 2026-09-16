@@ -180,15 +180,6 @@
         ]
       },
       {
-        "matcher": "Grep|Glob|Read|Bash|WebFetch|WebSearch|mcp__cognee__recall|mcp__cognee__remember",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash __HOME__/.claude/hooks/cognee-gate.sh"
-          }
-        ]
-      },
-      {
         "matcher": "Write|Edit",
         "hooks": [
           {
