@@ -195,6 +195,14 @@ fi
 if has 'docker[[:space:]]+(exec|run)[^|]*[[:space:]](env|printenv)([[:space:]]*$|[[:space:]]*['"'"'"]?$)' && ! has 'wc[[:space:]]+-c'; then
   deny "secret-leak-guard: dumping a container's full environment surfaces its secrets. Check one var's length: \`docker exec <c> sh -c 'printenv NAME | wc -c'\`."
 fi
+# docker inspect dumps Config.Env (injected secrets) unless --format picks
+# non-env fields. Added 2026-09-17 after an advisor leaked a live key this way.
+if has 'docker[[:space:]]+inspect'; then
+  fmt=$(printf '%s' "$cmd" | grep -oE -- '(--format|-f)([[:space:]]*=|[[:space:]]+).{0,200}' | head -1 || true)
+  if [ -z "$fmt" ] || printf '%s' "$fmt" | grep -q 'Env'; then
+    deny "secret-leak-guard: bare \`docker inspect\` prints the container's full Config.Env (injected secrets). Use \`--format\` with non-env fields, e.g. \`docker inspect -f '{{.State.Status}} {{.Name}}' <c>\`; for one env var: \`docker exec <c> sh -c 'printenv NAME | wc -c'\`."
+  fi
+fi
 # ── process argv / environ dumps (the read side) ─────────────────────────────
 # A running process's argv (`ps`/`pgrep -a`) or its /proc environ can hold a secret
 # passed on a command line — an injected `infisical run --token=<JWT>`, a `--password=`,

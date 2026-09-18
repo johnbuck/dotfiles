@@ -166,6 +166,16 @@ export function checkBash(cmd) {
   if (has(/docker\s+(exec|run)[^|]*\s(env|printenv)(\s*$|\s*['"]?$)/) && !has(/wc\s+-c/)) {
     return "secret-leak-guard: BLOCKED (command did not run) — dumping a container's full environment surfaces its secrets into context. Check one variable's presence/length instead: `docker exec <c> sh -c 'printenv NAME | wc -c'`.";
   }
+  // docker inspect dumps Config.Env (injected secrets) unless --format
+  // explicitly selects non-env fields. Added 2026-09-17 after a Paseo
+  // advisor leaked a live API key this way.
+  if (has(/docker\s+inspect\b/)) {
+    const fmt = cmd.match(/(?:--format|-f)(\s+|=)\s*('([^']*)'|"([^"]*)")?/);
+    const fmtStr = fmt ? (fmt[3] || fmt[4] || "") : "";
+    if (!fmt || /Env/.test(fmtStr)) {
+      return "secret-leak-guard: BLOCKED (command did not run) — bare `docker inspect` prints the container's full Config.Env (injected secrets) into context. Use `--format` selecting non-env fields, e.g. `docker inspect -f '{{.State.Status}} {{.Name}}' <c>`; for one env var use `docker exec <c> sh -c 'printenv NAME | wc -c'`.";
+    }
+  }
 
   // process argv / environ dumps (the read side)
   if (has(/(^|[^A-Za-z0-9_-])pgrep\s[^|;&]*(-[A-Za-z]*a[A-Za-z]*|--list-full)/)) {
